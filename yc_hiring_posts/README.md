@@ -35,4 +35,4 @@ It is intended to:
 
 ## Current Status
 
-The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, and a first-pass role extractor.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, and conservative company normalization.

@@ -70,7 +70,6 @@ class NormalizedPostRecord:
     thread_id: str
     company_id: str | None
     company_name_observed: str | None
-    company_name_normalized: str | None
     is_hiring_post: bool
     location_text: str | None
     remote_status: RemoteStatus
@@ -105,4 +104,20 @@ class RoleRecord:
     role_location_text: str | None
     role_remote_status: RemoteStatus
     role_compensation_id: str | None
+    misc: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class CompanyRecord:
+    """One conservatively resolved company identity."""
+
+    company_id: str
+    company_name_observed_preferred: str
+    company_match_key: str
+    company_name_variants: list[str]
+    company_website: str | None
+    yc_batch: str | None
+    entity_resolution_notes: str | None
+    first_seen_thread_month: str
+    last_seen_thread_month: str
     misc: dict[str, object] | None

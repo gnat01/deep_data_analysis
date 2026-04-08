@@ -181,6 +181,13 @@ Target fields include:
 
 Create a stable company dimension so that spelling or formatting variants across months resolve to one company identity.
 
+For V1, keep this conservative:
+
+- preserve `company_name_observed`
+- create stable `company_id` values where the match is clear
+- use an internal matching key for resolution
+- do not force a canonical display name unless it is actually needed later
+
 This is necessary for:
 
 - month-over-month company activity

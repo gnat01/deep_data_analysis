@@ -165,7 +165,6 @@ def normalize_raw_post_dict(raw_post: dict[str, object]) -> NormalizedPostRecord
         thread_id=str(raw_post["thread_id"]),
         company_id=None,
         company_name_observed=company_name,
-        company_name_normalized=None,
         is_hiring_post=is_hiring_post,
         location_text=" | ".join(location_segments) if location_segments else None,
         remote_status=remote_status,

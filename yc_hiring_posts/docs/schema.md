@@ -73,7 +73,6 @@ Suggested fields:
 - `thread_id`
 - `company_id`
 - `company_name_observed`
-- `company_name_normalized`
 - `is_hiring_post`
 - `location_text`
 - `remote_status`
@@ -118,7 +117,8 @@ One normalized company dimension.
 Suggested fields:
 
 - `company_id`
-- `company_name_canonical`
+- `company_name_observed_preferred`
+- `company_match_key`
 - `company_name_variants`
 - `company_website`
 - `company_description`

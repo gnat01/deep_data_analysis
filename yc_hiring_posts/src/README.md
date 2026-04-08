@@ -5,6 +5,7 @@ This directory holds the executable Python modules for the YC hiring-posts proje
 Current modules:
 
 - `cli.py`
+- `companies.py`
 - `discovery.py`
 - `fetch.py`
 - `models.py`

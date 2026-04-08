@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from companies import normalize_and_write_companies
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
 from normalize import normalize_and_write_thread_posts
@@ -63,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Extract role-level records from normalized posts.",
     )
     roles_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    companies_parser = subparsers.add_parser(
+        "normalize-thread-companies",
+        help="Resolve conservative company ids and write the company dimension.",
+    )
+    companies_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -152,6 +159,21 @@ def main() -> int:
                 {
                     "thread_month": args.thread_month,
                     "roles_jsonl_path": str(output_path),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "normalize-thread-companies":
+        companies_path, posts_path, roles_path = normalize_and_write_companies(args.thread_month)
+        print(
+            json.dumps(
+                {
+                    "thread_month": args.thread_month,
+                    "companies_jsonl_path": str(companies_path),
+                    "posts_normalized_jsonl_path": str(posts_path),
+                    "roles_jsonl_path": str(roles_path) if roles_path is not None else None,
                 },
                 indent=2,
             )

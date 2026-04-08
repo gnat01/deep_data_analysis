@@ -226,6 +226,40 @@ PYTHONPATH=src python src/cli.py extract-thread-roles 2024-11
 PYTHONPATH=src python src/cli.py extract-thread-roles 2025-08
 ```
 
+## Step 13: Normalize Companies
+
+Resolve conservative `company_id` values, write the company dimension, and backfill `company_id` into normalized posts and roles:
+
+```bash
+PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-03
+```
+
+This writes:
+
+```text
+data/interim/2025-03/companies.jsonl
+```
+
+And rewrites:
+
+```text
+data/interim/2025-03/posts_normalized.jsonl
+data/interim/2025-03/roles.jsonl
+```
+
+Inspect a few company rows:
+
+```bash
+sed -n '1,5p' data/interim/2025-03/companies.jsonl
+```
+
+Run for more months:
+
+```bash
+PYTHONPATH=src python src/cli.py normalize-thread-companies 2024-11
+PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-08
+```
+
 ## Recommended End-To-End Order For One New Month
 
 Example for `2025-03`:
@@ -237,6 +271,7 @@ PYTHONPATH=src python src/cli.py parse-thread-posts 2025-03
 PYTHONPATH=src python src/cli.py validate-thread-raw 2025-03
 PYTHONPATH=src python src/cli.py normalize-thread-posts 2025-03
 PYTHONPATH=src python src/cli.py extract-thread-roles 2025-03
+PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-03
 ```
 
 ## Tests
@@ -245,6 +280,7 @@ Run the full current test suite:
 
 ```bash
 python -m pytest tests/test_source_index.py tests/test_fetch.py tests/test_parse.py tests/test_validate.py tests/test_normalize.py tests/test_roles.py
+python -m pytest tests/test_companies.py
 ```
 
 Run only one area:
