@@ -22,7 +22,7 @@ The preferred ordering should be:
 
 ## Unit Of Collection
 
-For V1, the project should collect top-level hiring posts only and ignore reply chains unless they become necessary later.
+For V1, the project should collect top-level posts only and ignore reply chains unless they become necessary later. Hiring-post classification should happen after raw capture, not during ingestion.
 
 The project should preserve three distinct collection units:
 
@@ -30,7 +30,7 @@ The project should preserve three distinct collection units:
    - one monthly hiring discussion
    - includes metadata such as title, thread date, thread ID, source URL
 2. Post
-   - one top-level company hiring post within a thread
+   - one top-level post within a thread
    - includes author metadata if available, timestamps, and source identifiers
 3. Extraction artifact
    - one structured interpretation of a raw post
@@ -105,7 +105,8 @@ This is the preferred V1 workflow because it is simple, robust, and tends to rec
 
 ## Scraping Strategy
 
-Once a thread URL is verified, the ingestion layer should scrape the thread page directly and parse top-level hiring posts from the HTML.
+Once a thread URL is verified, the ingestion layer should scrape the thread page directly and capture top-level posts from the HTML.
+Once a thread URL is verified, the ingestion layer should scrape the thread page directly and capture top-level posts from the HTML.
 
 Recommended approach:
 
@@ -136,8 +137,9 @@ Likely issues to plan for:
 
 The project should include:
 
-- company hiring posts that meaningfully describe open roles
-- multi-role posts from a single company
+- all captured top-level posts in the raw layer
+- company hiring posts that meaningfully describe open roles in the normalized layer
+- multi-role hiring posts from a single company
 - repeated monthly postings as distinct historical records
 
 The project should generally exclude or separately label:

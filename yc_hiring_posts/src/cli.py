@@ -6,8 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
-from yc_hiring_posts.discovery import google_query_variants
-from yc_hiring_posts.source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
+from discovery import google_query_variants
+from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 
 
 def build_parser() -> argparse.ArgumentParser:

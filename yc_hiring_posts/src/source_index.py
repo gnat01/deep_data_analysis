@@ -8,7 +8,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable
 
-from yc_hiring_posts.models import SourceIndexEntry
+from models import SourceIndexEntry
 
 ALLOWED_STATUSES = {"planned", "verified", "fetched", "blocked"}
 REQUIRED_COLUMNS = {
@@ -30,7 +30,7 @@ class SourceIndexError(ValueError):
 def default_source_index_path() -> Path:
     """Return the default CSV path relative to the project root."""
 
-    return Path(__file__).resolve().parents[2] / "data" / "source_index.csv"
+    return Path(__file__).resolve().parents[1] / "data" / "source_index.csv"
 
 
 def load_source_index(path: str | Path | None = None) -> list[SourceIndexEntry]:

@@ -21,7 +21,7 @@ It is intended to:
 - `data/raw/`: immutable raw source captures
 - `data/interim/`: cleaned intermediate artifacts
 - `data/processed/`: analysis-ready outputs
-- `src/yc_hiring_posts/`: Python package for scraping, parsing, normalization, and analysis
+- `src/`: flat Python module layout for scraping, parsing, normalization, and analysis
 - `sql/`: analytical queries or warehouse-oriented transformations
 - `tests/`: tests for parsers, normalizers, and analytical logic
 

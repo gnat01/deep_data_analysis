@@ -4,7 +4,7 @@
 
 The schema should separate raw facts from normalized interpretations and from enriched analytical features.
 
-For V1, the project should focus on top-level hiring posts within each monthly thread. Replies to those posts do not need to be parsed or normalized in the first version because they are relatively sparse and add limited analytical value.
+For V1, the project should focus on top-level posts within each monthly thread. Replies to those posts do not need to be parsed or normalized in the first version because they are relatively sparse and add limited analytical value. The raw layer should capture the top-level thread posts first, and the normalized layer should decide which of them are actual hiring posts.
 
 Recommended layers:
 
@@ -31,7 +31,7 @@ Suggested fields:
 
 ### 2. `raw_posts`
 
-One record per fetched top-level hiring post in a thread for V1.
+One record per fetched top-level post in a thread for V1.
 
 Suggested fields:
 
@@ -51,7 +51,7 @@ Suggested fields:
 
 ### 3. `posts`
 
-One normalized hiring-post record. This may map 1:1 to a raw post at first, but the model should allow one raw post to expand into multiple role records later.
+One normalized post record derived from `raw_posts`. This layer should classify whether the captured top-level post is actually a hiring post. In many cases this may map 1:1 to a raw post, but the model should also allow one normalized hiring post to expand into multiple role records later.
 
 Suggested fields:
 
@@ -74,7 +74,7 @@ Suggested fields:
 
 ### 4. `roles`
 
-One record per distinct role extracted from a post.
+One record per distinct role extracted from a normalized hiring post.
 
 Suggested fields:
 
@@ -162,8 +162,8 @@ Suggested fields:
 
 - `threads` is monthly-thread grain.
 - `raw_posts` is top-level source-post grain for V1.
-- `posts` is normalized hiring-post grain.
-- `roles` is extracted-role grain.
+- `posts` is normalized top-level-post grain with hiring-post classification.
+- `roles` is extracted-role grain for normalized hiring posts only.
 
 This layered design avoids forcing every analytical question into a single oversized table.
 
@@ -198,7 +198,7 @@ The data pipeline should check:
 
 - every `raw_post` belongs to a valid `thread`
 - every `post` links to exactly one `raw_post`
-- every extracted `role` links to a valid `post`
+- every extracted `role` links to a valid hiring-classified `post`
 - normalized company IDs are stable across months
 - compensation parsing does not silently invent numeric values
 - duplicate-post labels remain reproducible given the same inputs and model version

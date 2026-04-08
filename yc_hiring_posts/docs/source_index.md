@@ -12,7 +12,7 @@ Without this file, scraping logic becomes too implicit and too hard to audit.
 
 ## V1 Scope
 
-For V1, the source index only needs to track monthly threads and their ingestion status for top-level hiring posts.
+For V1, the source index only needs to track monthly threads and their ingestion status for top-level posts.
 
 It does not need to:
 

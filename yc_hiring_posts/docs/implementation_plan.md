@@ -27,7 +27,7 @@ Deliverables:
 
 Success criteria:
 
-- obvious non-hiring top-level comments are filtered or labeled
+- raw top-level posts are classified cleanly into hiring vs non-hiring
 - multi-role posts are represented cleanly
 - extraction outputs are auditable against source text
 

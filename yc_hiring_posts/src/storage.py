@@ -8,7 +8,7 @@ from pathlib import Path
 def project_root() -> Path:
     """Return the yc_hiring_posts project root."""
 
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[1]
 
 
 def data_dir() -> Path:

@@ -6,8 +6,8 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from yc_hiring_posts.discovery import google_query_variants
-from yc_hiring_posts.source_index import load_source_index, verified_entries
+from discovery import google_query_variants
+from source_index import load_source_index, verified_entries
 
 
 def test_load_source_index_returns_seeded_months() -> None:
