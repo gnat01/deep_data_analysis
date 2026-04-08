@@ -11,7 +11,7 @@ This package will eventually contain:
 
 Suggested future module layout:
 
-- `sources.py`
+- `discovery.py`
 - `fetch.py`
 - `parse.py`
 - `normalize.py`

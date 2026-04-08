@@ -89,6 +89,37 @@ Before implementation, the project should create and maintain a source index con
 
 This source index becomes the control plane for downstream ingestion.
 
+## Discovery Workflow
+
+The intended discovery method for monthly threads is straightforward:
+
+1. Loop through target months.
+2. Search Google for either:
+   - `news.ycombinator hiring for <MONTH> <YEAR>`
+   - `Hacker News hiring for <MONTH> <YEAR>`
+3. Identify the canonical Hacker News thread for that month.
+4. Write the verified thread metadata into the source index.
+5. Scrape the confirmed thread URL separately from discovery.
+
+This is the preferred V1 workflow because it is simple, robust, and tends to recover the relevant monthly thread cleanly without overengineering thread discovery.
+
+## Scraping Strategy
+
+Once a thread URL is verified, the ingestion layer should scrape the thread page directly and parse top-level hiring posts from the HTML.
+
+Recommended approach:
+
+- fetch the canonical thread page
+- parse the HTML with BeautifulSoup
+- extract thread metadata
+- extract top-level posts only for V1
+- preserve raw HTML or raw payloads for auditability
+
+Discovery and scraping should remain separate concerns:
+
+- discovery decides which thread to ingest
+- scraping captures the thread and posts cleanly once the thread is known
+
 ## Data Quality Risks
 
 Likely issues to plan for:
@@ -122,7 +153,7 @@ These need validation during implementation:
 - whether the HN API alone is sufficient for all required text and metadata
 - whether edited top-level posts can be reliably captured after the fact
 - how to distinguish top-level hiring posts from other top-level thread noise
-- whether monthly thread discovery can be automated reliably from titles alone
+- whether Google-driven discovery can be made repeatable enough to keep partly automated
 
 ## Recommended First Deliverables
 

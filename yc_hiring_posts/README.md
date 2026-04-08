@@ -16,6 +16,8 @@ It is intended to:
 - `docs/data_sources.md`: source assumptions, collection strategy, and provenance requirements
 - `docs/schema.md`: draft data model for raw, normalized, and enriched layers
 - `docs/implementation_plan.md`: phased execution plan
+- `docs/source_index.md`: contract for the monthly source index
+- `data/source_index.csv`: manually curated month-to-thread control table
 - `data/raw/`: immutable raw source captures
 - `data/interim/`: cleaned intermediate artifacts
 - `data/processed/`: analysis-ready outputs
@@ -33,4 +35,4 @@ It is intended to:
 
 ## Current Status
 
-The repository currently contains planning artifacts and a starter structure. No scraper or parser implementation has been added yet.
+The repository now contains planning artifacts, a source-index contract, and the first typed Python scaffolding for ingestion. Network fetching and parsing are the next implementation steps.

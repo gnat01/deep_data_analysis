@@ -5,6 +5,7 @@
 Deliverables:
 
 - manually verified monthly source index from January 2024 onward
+- month-by-month Google discovery queries for canonical thread lookup
 - raw fetcher for threads and top-level posts
 - append-only raw storage
 - fetch validation report
@@ -12,6 +13,7 @@ Deliverables:
 Success criteria:
 
 - each targeted month resolves to a source thread
+- the discovery process is explicit and repeatable
 - raw capture is reproducible
 - source URLs and IDs are retained for every collected top-level post
 
