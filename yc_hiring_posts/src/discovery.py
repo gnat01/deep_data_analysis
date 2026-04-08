@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Iterable
+
+from models import SourceIndexEntry
 
 
 @dataclass(frozen=True)
@@ -37,3 +40,12 @@ def google_query_variants(thread_month: str) -> list[DiscoveryQuery]:
             search_query=f"Hacker News hiring for {month_name} {year}",
         ),
     ]
+
+
+def google_queries_for_entries(entries: Iterable[SourceIndexEntry]) -> list[DiscoveryQuery]:
+    """Return Google discovery queries for each source-index entry."""
+
+    queries: list[DiscoveryQuery] = []
+    for entry in entries:
+        queries.extend(google_query_variants(entry.thread_month))
+    return queries

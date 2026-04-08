@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from discovery import google_query_variants
+from discovery import google_queries_for_entries, google_query_variants
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 
 
@@ -27,6 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the preferred Google search queries for a target month.",
     )
     query_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    all_queries_parser = subparsers.add_parser(
+        "show-all-discovery-queries",
+        help="Print Google search queries for all months in the source index.",
+    )
+    all_queries_parser.add_argument("--path", type=Path, default=default_source_index_path())
     return parser
 
 
@@ -43,6 +49,12 @@ def main() -> int:
 
     if args.command == "show-discovery-queries":
         queries = google_query_variants(args.thread_month)
+        print(json.dumps([query.__dict__ for query in queries], indent=2))
+        return 0
+
+    if args.command == "show-all-discovery-queries":
+        entries = load_source_index(args.path)
+        queries = google_queries_for_entries(entries)
         print(json.dumps([query.__dict__ for query in queries], indent=2))
         return 0
 
