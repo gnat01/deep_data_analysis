@@ -19,6 +19,10 @@ def raw_data_dir() -> Path:
     return data_dir() / "raw"
 
 
+def interim_data_dir() -> Path:
+    return data_dir() / "interim"
+
+
 def month_raw_dir(thread_month: str) -> Path:
     """Return the raw-data folder for one thread month."""
 
@@ -29,6 +33,20 @@ def ensure_month_raw_dir(thread_month: str) -> Path:
     """Create and return the raw-data folder for one thread month."""
 
     target = month_raw_dir(thread_month)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def month_interim_dir(thread_month: str) -> Path:
+    """Return the interim-data folder for one thread month."""
+
+    return interim_data_dir() / thread_month
+
+
+def ensure_month_interim_dir(thread_month: str) -> Path:
+    """Create and return the interim-data folder for one thread month."""
+
+    target = month_interim_dir(thread_month)
     target.mkdir(parents=True, exist_ok=True)
     return target
 
@@ -55,3 +73,9 @@ def posts_jsonl_path(thread_month: str) -> Path:
     """Return the canonical path for raw top-level posts."""
 
     return month_raw_dir(thread_month) / "posts.jsonl"
+
+
+def normalized_posts_jsonl_path(thread_month: str) -> Path:
+    """Return the canonical path for normalized top-level posts."""
+
+    return month_interim_dir(thread_month) / "posts_normalized.jsonl"

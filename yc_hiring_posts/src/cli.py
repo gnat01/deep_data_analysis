@@ -8,6 +8,7 @@ from pathlib import Path
 
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
+from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 from validate import validation_report_to_dict, validate_many_thread_months, validate_thread_month
@@ -49,6 +50,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parse stored raw thread HTML into top-level posts JSONL.",
     )
     parse_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    normalize_parser = subparsers.add_parser(
+        "normalize-thread-posts",
+        help="Normalize parsed raw posts into interim post records.",
+    )
+    normalize_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -112,6 +119,19 @@ def main() -> int:
                 {
                     "thread_month": args.thread_month,
                     "posts_jsonl_path": str(output_path),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "normalize-thread-posts":
+        output_path = normalize_and_write_thread_posts(args.thread_month)
+        print(
+            json.dumps(
+                {
+                    "thread_month": args.thread_month,
+                    "normalized_posts_jsonl_path": str(output_path),
                 },
                 indent=2,
             )

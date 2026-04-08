@@ -153,9 +153,13 @@ The first normalization pass should produce a `posts` layer with fields such as:
 - location text
 - remote status
 - compensation text
+- compensation text accuracy flag
+- funding when explicitly stated
 - hiring-post classification
 
 This layer should be conservative and traceable back to raw source records.
+
+The first concrete Step 11 artifact should be a normalized JSONL output under `data/interim/<YYYY-MM>/` so the `posts` layer can be inspected before any database landing is introduced.
 
 At this stage, `posts` becomes the normalized layer that decides whether a captured top-level raw post is actually a hiring post.
 

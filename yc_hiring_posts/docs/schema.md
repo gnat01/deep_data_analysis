@@ -64,6 +64,8 @@ Suggested fields:
 
 One normalized post record derived from `raw_posts`. This layer should classify whether the captured top-level post is actually a hiring post. In many cases this may map 1:1 to a raw post, but the model should also allow one normalized hiring post to expand into multiple role records later.
 
+Before any database landing, the first materialized form of this layer can live as JSONL under `data/interim/<YYYY-MM>/`.
+
 Suggested fields:
 
 - `post_id`
@@ -78,6 +80,8 @@ Suggested fields:
 - `employment_type`
 - `visa_sponsorship_text`
 - `compensation_text`
+- `compensation_text_accuracy`
+- `funding`
 - `post_text_clean`
 - `misc`
 - `parser_version`

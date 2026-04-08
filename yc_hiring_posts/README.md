@@ -19,7 +19,7 @@ It is intended to:
 - `docs/source_index.md`: contract for the monthly source index
 - `data/source_index.csv`: manually curated month-to-thread control table
 - `data/raw/`: immutable raw source captures
-- `data/interim/`: cleaned intermediate artifacts
+- `data/interim/`: normalized intermediate artifacts such as post-level JSONL
 - `data/processed/`: analysis-ready outputs
 - `src/`: flat Python module layout for scraping, parsing, normalization, and analysis
 - `sql/`: analytical queries or warehouse-oriented transformations
@@ -30,9 +30,9 @@ It is intended to:
 1. Identify the canonical YC hiring-thread sources and archival strategy.
 2. Define a stable raw-record format.
 3. Build extraction logic for company, role, remote status, and compensation.
-4. Materialize normalized tables that support time-series analysis.
+4. Materialize normalized post and role layers that support time-series analysis.
 5. Add duplicate-post detection and text-similarity analysis.
 
 ## Current Status
 
-The repository now contains planning artifacts, a source-index contract, and the first typed Python scaffolding for ingestion. Network fetching and parsing are the next implementation steps.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, and the first normalized post parser.

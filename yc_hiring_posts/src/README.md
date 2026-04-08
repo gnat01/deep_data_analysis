@@ -8,6 +8,7 @@ Current modules:
 - `discovery.py`
 - `fetch.py`
 - `models.py`
+- `normalize.py`
 - `parse.py`
 - `raw_schema.py`
 - `source_index.py`

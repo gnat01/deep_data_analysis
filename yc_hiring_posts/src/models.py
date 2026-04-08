@@ -8,6 +8,8 @@ from typing import Literal
 
 
 SourceIndexStatus = Literal["planned", "verified", "fetched", "blocked"]
+RemoteStatus = Literal["remote", "hybrid", "onsite", "unspecified", "unknown"]
+CompensationTextAccuracy = Literal["high", "low"]
 
 
 @dataclass(frozen=True)
@@ -57,3 +59,28 @@ class RawPostRecord:
     raw_payload_json: str | None = None
     misc: dict[str, object] | None = None
     raw_payload_hash: str | None = None
+
+
+@dataclass(frozen=True)
+class NormalizedPostRecord:
+    """One normalized post record derived from a raw top-level post."""
+
+    post_id: str
+    raw_post_id: str
+    thread_id: str
+    company_id: str | None
+    company_name_observed: str | None
+    company_name_normalized: str | None
+    is_hiring_post: bool
+    location_text: str | None
+    remote_status: RemoteStatus
+    employment_type: str | None
+    visa_sponsorship_text: str | None
+    compensation_text: str | None
+    compensation_text_accuracy: CompensationTextAccuracy | None
+    funding: str | None
+    post_text_clean: str
+    misc: dict[str, object] | None
+    parser_version: str
+    parse_confidence: float
+    created_at_utc: datetime
