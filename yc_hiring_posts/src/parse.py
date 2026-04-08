@@ -118,7 +118,7 @@ def build_raw_post_record(
         raw_text=raw_text,
         source_url=f"https://news.ycombinator.com/item?id={source_comment_id}",
         collection_timestamp_utc=collected_at,
-        is_deleted="coll" in fragment and commtext_html == "",
+        is_deleted=is_deleted_fragment(fragment, commtext_html, raw_text),
         is_dead='class="athing comtr dead"' in fragment,
         raw_html=fragment,
         raw_payload_json=None,
@@ -199,6 +199,18 @@ def extract_nav_labels(fragment: str) -> list[str]:
     if not match:
         return []
     return [clean_text(unescape(TAG_RE.sub("", value))) for value in match.group("navs").split("|") if clean_text(unescape(TAG_RE.sub("", value)))]
+
+
+def is_deleted_fragment(fragment: str, commtext_html: str, raw_text: str) -> bool:
+    """Return true when the HN row represents deleted content."""
+
+    if "[deleted]" in fragment:
+        return True
+    if commtext_html.strip() == "[deleted]":
+        return True
+    if raw_text.strip() == "[deleted]":
+        return True
+    return False
 
 
 def html_fragment_to_text(fragment_html: str) -> str:

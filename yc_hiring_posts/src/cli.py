@@ -10,6 +10,7 @@ from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
 from parse import parse_and_write_thread_posts
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
+from validate import validation_report_to_dict, validate_many_thread_months, validate_thread_month
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +49,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parse stored raw thread HTML into top-level posts JSONL.",
     )
     parse_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    validate_parser = subparsers.add_parser(
+        "validate-thread-raw",
+        help="Validate raw artifacts and parsed posts for one month.",
+    )
+    validate_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    validate_many_parser = subparsers.add_parser(
+        "validate-many-thread-raw",
+        help="Validate raw artifacts and parsed posts for multiple months.",
+    )
+    validate_many_parser.add_argument("thread_months", nargs="+", help="Months in YYYY-MM format.")
     return parser
 
 
@@ -104,6 +117,16 @@ def main() -> int:
             )
         )
         return 0
+
+    if args.command == "validate-thread-raw":
+        report = validate_thread_month(args.thread_month)
+        print(json.dumps(validation_report_to_dict(report), indent=2))
+        return 0 if report.checks_passed else 1
+
+    if args.command == "validate-many-thread-raw":
+        reports = validate_many_thread_months(args.thread_months)
+        print(json.dumps([validation_report_to_dict(report) for report in reports], indent=2))
+        return 0 if all(report.checks_passed for report in reports) else 1
 
     parser.error(f"Unknown command: {args.command}")
     return 2

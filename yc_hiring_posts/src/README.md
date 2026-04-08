@@ -11,5 +11,6 @@ Current modules:
 - `parse.py`
 - `source_index.py`
 - `storage.py`
+- `validate.py`
 
 The layout is intentionally flat for now. If the codebase grows substantially, it can be split into subpackages later.
