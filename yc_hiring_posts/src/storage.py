@@ -39,6 +39,18 @@ def thread_metadata_path(thread_month: str) -> Path:
     return month_raw_dir(thread_month) / "thread.json"
 
 
+def thread_html_path(thread_month: str) -> Path:
+    """Return the canonical path for raw thread HTML."""
+
+    return month_raw_dir(thread_month) / "thread.html"
+
+
+def fetch_manifest_path(thread_month: str) -> Path:
+    """Return the canonical path for per-month raw fetch metadata."""
+
+    return month_raw_dir(thread_month) / "fetch_manifest.json"
+
+
 def posts_jsonl_path(thread_month: str) -> Path:
     """Return the canonical path for raw top-level posts."""
 

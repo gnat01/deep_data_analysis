@@ -6,6 +6,7 @@ Current modules:
 
 - `cli.py`
 - `discovery.py`
+- `fetch.py`
 - `models.py`
 - `source_index.py`
 - `storage.py`

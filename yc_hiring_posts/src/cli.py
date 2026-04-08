@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from discovery import google_queries_for_entries, google_query_variants
+from fetch import fetch_and_write_thread, fetchable_entries
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 
 
@@ -33,6 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print Google search queries for all months in the source index.",
     )
     all_queries_parser.add_argument("--path", type=Path, default=default_source_index_path())
+
+    fetch_parser = subparsers.add_parser(
+        "fetch-thread-raw",
+        help="Fetch and write raw thread artifacts for one verified month.",
+    )
+    fetch_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+    fetch_parser.add_argument("--path", type=Path, default=default_source_index_path())
     return parser
 
 
@@ -56,6 +64,25 @@ def main() -> int:
         entries = load_source_index(args.path)
         queries = google_queries_for_entries(entries)
         print(json.dumps([query.__dict__ for query in queries], indent=2))
+        return 0
+
+    if args.command == "fetch-thread-raw":
+        entries = load_source_index(args.path)
+        month_matches = [entry for entry in fetchable_entries(entries) if entry.thread_month == args.thread_month]
+        if not month_matches:
+            parser.error(f"No verified source-index row found for month: {args.thread_month}")
+        html_path, metadata_path, manifest_path = fetch_and_write_thread(month_matches[0])
+        print(
+            json.dumps(
+                {
+                    "thread_month": args.thread_month,
+                    "html_path": str(html_path),
+                    "metadata_path": str(metadata_path),
+                    "manifest_path": str(manifest_path),
+                },
+                indent=2,
+            )
+        )
         return 0
 
     parser.error(f"Unknown command: {args.command}")
