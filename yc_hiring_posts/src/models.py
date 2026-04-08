@@ -84,3 +84,25 @@ class NormalizedPostRecord:
     parser_version: str
     parse_confidence: float
     created_at_utc: datetime
+
+
+@dataclass(frozen=True)
+class RoleRecord:
+    """One distinct role extracted from a normalized hiring post."""
+
+    role_id: str
+    post_id: str
+    company_id: str | None
+    role_title_observed: str
+    role_title_normalized: str | None
+    role_family: str | None
+    role_subfamily: str | None
+    seniority: str | None
+    headcount_text: str | None
+    skills_text: str | None
+    responsibilities_text: str | None
+    requirements_text: str | None
+    role_location_text: str | None
+    role_remote_status: RemoteStatus
+    role_compensation_id: str | None
+    misc: dict[str, object] | None

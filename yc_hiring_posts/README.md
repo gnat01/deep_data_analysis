@@ -19,7 +19,7 @@ It is intended to:
 - `docs/source_index.md`: contract for the monthly source index
 - `data/source_index.csv`: manually curated month-to-thread control table
 - `data/raw/`: immutable raw source captures
-- `data/interim/`: normalized intermediate artifacts such as post-level JSONL
+- `data/interim/`: normalized intermediate artifacts such as post-level and role-level JSONL
 - `data/processed/`: analysis-ready outputs
 - `src/`: flat Python module layout for scraping, parsing, normalization, and analysis
 - `sql/`: analytical queries or warehouse-oriented transformations
@@ -35,4 +35,4 @@ It is intended to:
 
 ## Current Status
 
-The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, and the first normalized post parser.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, and a first-pass role extractor.

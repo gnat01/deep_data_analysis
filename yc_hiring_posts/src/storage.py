@@ -79,3 +79,9 @@ def normalized_posts_jsonl_path(thread_month: str) -> Path:
     """Return the canonical path for normalized top-level posts."""
 
     return month_interim_dir(thread_month) / "posts_normalized.jsonl"
+
+
+def roles_jsonl_path(thread_month: str) -> Path:
+    """Return the canonical path for extracted role rows."""
+
+    return month_interim_dir(thread_month) / "roles.jsonl"

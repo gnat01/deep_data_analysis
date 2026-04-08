@@ -11,6 +11,7 @@ Current modules:
 - `normalize.py`
 - `parse.py`
 - `raw_schema.py`
+- `roles.py`
 - `source_index.py`
 - `storage.py`
 - `validate.py`
