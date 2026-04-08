@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fetch import dumps_json, sha256_text
 from models import RawPostRecord
+from raw_schema import RAW_SCHEMA_VERSION
 from storage import ensure_month_raw_dir, posts_jsonl_path, thread_html_path, thread_metadata_path
 
 COMMENT_ROW_START_RE = re.compile(r'<tr class="athing comtr" id="(?P<comment_id>\d+)">')
@@ -151,6 +152,7 @@ def raw_post_to_dict(raw_post: RawPostRecord) -> dict[str, object]:
     for key, value in list(data.items()):
         if hasattr(value, "isoformat"):
             data[key] = value.isoformat()
+    data["raw_schema_version"] = RAW_SCHEMA_VERSION
     return data
 
 

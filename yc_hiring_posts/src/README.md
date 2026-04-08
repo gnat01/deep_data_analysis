@@ -9,6 +9,7 @@ Current modules:
 - `fetch.py`
 - `models.py`
 - `parse.py`
+- `raw_schema.py`
 - `source_index.py`
 - `storage.py`
 - `validate.py`

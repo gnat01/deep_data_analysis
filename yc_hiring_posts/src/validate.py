@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fetch import sha256_text
 from parse import extract_comment_row_fragments, extract_indent
+from raw_schema import RAW_POST_FIELDS, RAW_POST_REQUIRED_NONEMPTY_FIELDS, RAW_SCHEMA_VERSION
 from storage import fetch_manifest_path, posts_jsonl_path, thread_html_path, thread_metadata_path
 
 LOW_POST_COUNT_WARNING_THRESHOLD = 100
@@ -68,6 +69,17 @@ def validate_thread_month(thread_month: str) -> ValidationReport:
 
     if metadata.get("raw_payload_hash") != sha256_text(html):
         hard_failures.append("thread.json raw_payload_hash does not match thread.html")
+    if metadata.get("raw_schema_version") != RAW_SCHEMA_VERSION:
+        hard_failures.append(
+            f"thread.json raw_schema_version mismatch: expected {RAW_SCHEMA_VERSION}, got {metadata.get('raw_schema_version')}"
+        )
+
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("raw_schema_version") != RAW_SCHEMA_VERSION:
+            hard_failures.append(
+                f"fetch_manifest.json raw_schema_version mismatch: expected {RAW_SCHEMA_VERSION}, got {manifest.get('raw_schema_version')}"
+            )
 
     seen_comment_ids: set[str] = set()
     missing_timestamp_count = 0
@@ -131,20 +143,20 @@ def count_top_level_rows_in_html(html: str) -> int:
 
 
 def _validate_required_row_fields(row: dict[str, object], *, index: int, hard_failures: list[str]) -> None:
-    required_fields = [
-        "raw_post_id",
-        "thread_id",
-        "source_comment_id",
-        "source_url",
-        "collection_timestamp_utc",
-        "raw_html",
-        "raw_payload_hash",
-        "misc",
-    ]
-    for field in required_fields:
+    schema_presence_fields = [*RAW_POST_FIELDS, "raw_schema_version"]
+    for field in schema_presence_fields:
+        if field not in row:
+            hard_failures.append(f"Missing schema field '{field}' in posts.jsonl row {index}")
+
+    for field in RAW_POST_REQUIRED_NONEMPTY_FIELDS:
         value = row.get(field)
         if value is None or value == "":
             hard_failures.append(f"Missing required field '{field}' in posts.jsonl row {index}")
+
+    if row.get("raw_schema_version") != RAW_SCHEMA_VERSION:
+        hard_failures.append(
+            f"raw_schema_version mismatch in posts.jsonl row {index}: expected {RAW_SCHEMA_VERSION}, got {row.get('raw_schema_version')}"
+        )
 
     raw_text = row.get("raw_text")
     is_deleted = bool(row.get("is_deleted"))

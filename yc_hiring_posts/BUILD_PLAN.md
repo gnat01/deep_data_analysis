@@ -142,6 +142,8 @@ Once the raw layer is working, keep it stable.
 
 Do not mix parsing assumptions into raw storage. Raw data should remain as close to source as practical.
 
+The raw artifact contract should be documented explicitly and carry a schema version in code so future raw-layer changes are deliberate.
+
 ### 11. Build The Normalized Post Parser
 
 The first normalization pass should produce a `posts` layer with fields such as:

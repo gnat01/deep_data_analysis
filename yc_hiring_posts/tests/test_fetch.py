@@ -53,8 +53,10 @@ def test_write_raw_thread_artifacts_writes_expected_files(monkeypatch, tmp_path:
     assert metadata["thread_id"] == "43243024"
     assert metadata["thread_month"] == "2025-03"
     assert metadata["collection_timestamp_utc"] == "2026-04-08T12:00:00+00:00"
+    assert metadata["raw_schema_version"] == "v1"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["thread_month"] == "2025-03"
+    assert manifest["raw_schema_version"] == "v1"
     assert manifest["artifacts"]["thread_html"].endswith("/data/raw/2025-03/thread.html")
     assert manifest["artifacts"]["thread_metadata"].endswith("/data/raw/2025-03/thread.json")
 

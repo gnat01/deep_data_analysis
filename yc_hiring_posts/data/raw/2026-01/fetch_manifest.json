@@ -5,6 +5,7 @@
   },
   "fetched_at_utc": "2026-04-08T09:55:09.928088+00:00",
   "raw_payload_hash": "57315e9ae53e199af1e74e72f14cdd73b32eb09ece2b83cdf9a3ef8b647ff076",
+  "raw_schema_version": "v1",
   "source_url": "https://news.ycombinator.com/item?id=46466074",
   "status": "verified",
   "thread_id": "46466074",

@@ -1,6 +1,7 @@
 {
   "collection_timestamp_utc": "2026-04-08T09:12:15.915776+00:00",
   "raw_payload_hash": "2cfe011010e5a148ede6be30a60fbca531fc3cb8fe68f625c2ff673da7b27217",
+  "raw_schema_version": "v1",
   "source_system": "hacker_news",
   "source_url": "https://news.ycombinator.com/item?id=43243024",
   "thread_date": "2025-03-03",

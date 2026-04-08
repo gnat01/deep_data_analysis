@@ -41,4 +41,5 @@ def test_write_raw_posts_jsonl_writes_json_lines(tmp_path: Path, monkeypatch) ->
     assert len(lines) == 2
     parsed = json.loads(lines[0])
     assert parsed["thread_id"] == "43243024"
+    assert parsed["raw_schema_version"] == "v1"
     assert parsed["misc"]["indent"] == 0

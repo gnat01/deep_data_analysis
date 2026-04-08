@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 from models import SourceIndexEntry, ThreadRecord
+from raw_schema import RAW_SCHEMA_VERSION
 from source_index import verified_entries
 from storage import ensure_month_raw_dir, fetch_manifest_path, thread_html_path, thread_metadata_path
 
@@ -114,10 +115,12 @@ def thread_record_to_dict(record: ThreadRecord) -> dict[str, str]:
     """Serialize thread metadata to a JSON-friendly dict."""
 
     raw = asdict(record)
-    return {
+    serialized = {
         key: value.isoformat() if hasattr(value, "isoformat") else value
         for key, value in raw.items()
     }
+    serialized["raw_schema_version"] = RAW_SCHEMA_VERSION
+    return serialized
 
 
 def build_fetch_manifest(
@@ -130,6 +133,7 @@ def build_fetch_manifest(
     """Build a manifest describing one raw thread fetch."""
 
     return {
+        "raw_schema_version": RAW_SCHEMA_VERSION,
         "thread_month": entry.thread_month,
         "source_url": entry.source_url,
         "thread_id": entry.thread_id,

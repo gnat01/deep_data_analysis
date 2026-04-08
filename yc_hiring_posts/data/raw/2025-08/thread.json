@@ -1,10 +1,11 @@
 {
+  "collection_timestamp_utc": "2026-04-08T09:11:15.138510+00:00",
+  "raw_payload_hash": "a958a06cc1248f0333a037620f09443b02752a37195a5b6f61f82035864c68a1",
+  "raw_schema_version": "v1",
+  "source_system": "hacker_news",
+  "source_url": "https://news.ycombinator.com/item?id=44757794",
+  "thread_date": null,
   "thread_id": "44757794",
   "thread_month": "2025-08",
-  "thread_date": null,
-  "thread_title": "Ask HN: Who is hiring? (August 2025)",
-  "source_url": "https://news.ycombinator.com/item?id=44757794",
-  "source_system": "hacker_news",
-  "collection_timestamp_utc": "2026-04-08T09:11:15.138510+00:00",
-  "raw_payload_hash": "a958a06cc1248f0333a037620f09443b02752a37195a5b6f61f82035864c68a1"
+  "thread_title": "Ask HN: Who is hiring? (August 2025)"
 }
