@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from analytics import materialize_core_analytics
 from companies import normalize_and_write_companies
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
@@ -75,6 +76,11 @@ def build_parser() -> argparse.ArgumentParser:
     materialize_parser = subparsers.add_parser(
         "materialize-v1-core-tables",
         help="Materialize consolidated V1 core tables into the processed layer.",
+    )
+
+    analytics_parser = subparsers.add_parser(
+        "materialize-core-analytics",
+        help="Materialize recurring analytical outputs from the processed core tables.",
     )
 
     validate_parser = subparsers.add_parser(
@@ -188,6 +194,11 @@ def main() -> int:
 
     if args.command == "materialize-v1-core-tables":
         outputs = materialize_v1_core_tables()
+        print(json.dumps({key: str(value) for key, value in outputs.items()}, indent=2))
+        return 0
+
+    if args.command == "materialize-core-analytics":
+        outputs = materialize_core_analytics()
         print(json.dumps({key: str(value) for key, value in outputs.items()}, indent=2))
         return 0
 

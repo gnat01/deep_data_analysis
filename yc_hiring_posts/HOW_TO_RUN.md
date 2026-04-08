@@ -1,6 +1,6 @@
 # How To Run
 
-This document explains exactly how to run **Steps 4 through 14** from the parent project directory:
+This document explains exactly how to run **Steps 4 through 16** from the parent project directory:
 
 ```bash
 cd /Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts
@@ -287,6 +287,68 @@ sed -n '1,5p' data/processed/v1_core_tables/threads.jsonl
 sed -n '1,40p' data/processed/v1_core_tables_manifest.json
 ```
 
+## Step 16: Materialize Core Analytics
+
+Write the recurring analytical outputs into `data/processed/analytics/`:
+
+```bash
+PYTHONPATH=src python src/cli.py materialize-core-analytics
+```
+
+This writes:
+
+```text
+data/processed/analytics/company_posting_counts_by_month.csv
+data/processed/analytics/remote_status_trends_by_month.csv
+data/processed/analytics/remote_status_share_by_month.csv
+data/processed/analytics/role_family_trends_by_month.csv
+data/processed/analytics/recurring_company_hiring_patterns.csv
+data/processed/analytics/analytics_manifest.json
+data/processed/analytics/visuals/
+```
+
+Inspect the outputs:
+
+```bash
+ls data/processed/analytics
+sed -n '1,10p' data/processed/analytics/company_posting_counts_by_month.csv
+sed -n '1,12p' data/processed/analytics/remote_status_trends_by_month.csv
+sed -n '1,12p' data/processed/analytics/remote_status_share_by_month.csv
+sed -n '1,12p' data/processed/analytics/recurring_company_hiring_patterns.csv
+ls data/processed/analytics/visuals
+```
+
+The visuals directory now includes:
+
+```text
+data/processed/analytics/visuals/company_posting_counts_by_month.png
+data/processed/analytics/visuals/remote_status_trends_by_month.png
+data/processed/analytics/visuals/remote_status_share_by_month.png
+data/processed/analytics/visuals/role_family_trends_by_month.png
+data/processed/analytics/visuals/recurring_company_hiring_patterns.png
+```
+
+## Interactive Explorer
+
+Launch the Streamlit app from the project root:
+
+```bash
+streamlit run app.py
+```
+
+The explorer reads from `data/processed/v1_core_tables/` and lets you filter by:
+
+- companies
+- role families
+- remote status
+
+It then shows:
+
+- filtered hiring-post time series
+- filtered remote-status mix over time
+- filtered role-family time series
+- a searchable post preview table
+
 ## Recommended End-To-End Order For One New Month
 
 Example for `2025-03`:
@@ -300,6 +362,7 @@ PYTHONPATH=src python src/cli.py normalize-thread-posts 2025-03
 PYTHONPATH=src python src/cli.py extract-thread-roles 2025-03
 PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-03
 PYTHONPATH=src python src/cli.py materialize-v1-core-tables
+PYTHONPATH=src python src/cli.py materialize-core-analytics
 ```
 
 ## Tests
@@ -310,6 +373,7 @@ Run the full current test suite:
 python -m pytest tests/test_source_index.py tests/test_fetch.py tests/test_parse.py tests/test_validate.py tests/test_normalize.py tests/test_roles.py
 python -m pytest tests/test_companies.py
 python -m pytest tests/test_materialize.py
+python -m pytest tests/test_analytics.py
 ```
 
 Run only one area:
@@ -346,6 +410,7 @@ Processed consolidated outputs:
 ```text
 data/processed/v1_core_tables/
 data/processed/v1_core_tables_manifest.json
+data/processed/analytics/
 ```
 
 ## Notes

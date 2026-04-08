@@ -21,6 +21,7 @@ It is intended to:
 - `data/raw/`: immutable raw source captures
 - `data/interim/`: normalized intermediate artifacts such as post-level and role-level JSONL
 - `data/processed/`: analysis-ready outputs
+- `app.py`: root-level Streamlit explorer launcher
 - `src/`: flat Python module layout for scraping, parsing, normalization, and analysis
 - `sql/`: analytical queries or warehouse-oriented transformations
 - `tests/`: tests for parsers, normalizers, and analytical logic
@@ -35,4 +36,4 @@ It is intended to:
 
 ## Current Status
 
-The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, and V1 core-table materialization.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, V1 core-table materialization, recurring analytical outputs, upgraded Step 16 visuals, and an interactive Streamlit explorer.

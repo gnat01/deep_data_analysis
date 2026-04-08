@@ -1,0 +1,524 @@
+"""Recurring analytical outputs built from the processed V1 core tables."""
+
+from __future__ import annotations
+
+import csv
+import json
+import os
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from storage import ensure_processed_dir, processed_data_dir
+
+
+def materialize_core_analytics() -> dict[str, Path]:
+    """Write the core Step 16 analytical outputs."""
+
+    processed_dir = ensure_processed_dir()
+    analytics_dir = processed_dir / "analytics"
+    analytics_dir.mkdir(parents=True, exist_ok=True)
+    visuals_dir = analytics_dir / "visuals"
+    visuals_dir.mkdir(parents=True, exist_ok=True)
+
+    tables_dir = processed_dir / "v1_core_tables"
+    posts = load_jsonl(tables_dir / "posts.jsonl")
+    roles = load_jsonl(tables_dir / "roles.jsonl")
+    companies = load_jsonl(tables_dir / "companies.jsonl")
+    threads = load_jsonl(tables_dir / "threads.jsonl")
+
+    company_name_by_id = {row["company_id"]: row["company_name_observed_preferred"] for row in companies}
+    month_by_thread_id = {row["thread_id"]: row["thread_month"] for row in threads}
+
+    company_posting_rows = company_posting_counts_by_month(posts, company_name_by_id, month_by_thread_id)
+    remote_rows = remote_status_trends_by_month(posts, month_by_thread_id)
+    remote_share_rows = remote_status_share_by_month(remote_rows)
+    role_family_rows = role_family_trends_by_month(roles, posts, company_name_by_id, month_by_thread_id)
+    recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
+
+    outputs = {
+        "company_posting_counts_by_month": write_csv(
+            analytics_dir / "company_posting_counts_by_month.csv",
+            company_posting_rows,
+        ),
+        "remote_status_trends_by_month": write_csv(
+            analytics_dir / "remote_status_trends_by_month.csv",
+            remote_rows,
+        ),
+        "remote_status_share_by_month": write_csv(
+            analytics_dir / "remote_status_share_by_month.csv",
+            remote_share_rows,
+        ),
+        "role_family_trends_by_month": write_csv(
+            analytics_dir / "role_family_trends_by_month.csv",
+            role_family_rows,
+        ),
+        "recurring_company_hiring_patterns": write_csv(
+            analytics_dir / "recurring_company_hiring_patterns.csv",
+            recurring_rows,
+        ),
+    }
+    visual_outputs = write_analytics_visuals(
+        visuals_dir=visuals_dir,
+        company_posting_rows=company_posting_rows,
+        remote_rows=remote_rows,
+        remote_share_rows=remote_share_rows,
+        role_family_rows=role_family_rows,
+        recurring_rows=recurring_rows,
+    )
+    outputs.update(visual_outputs)
+    outputs["manifest"] = write_manifest(analytics_dir / "analytics_manifest.json", outputs)
+    return outputs
+
+
+def company_posting_counts_by_month(
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Aggregate hiring-post counts by company and month."""
+
+    counts: dict[tuple[str, str | None], int] = defaultdict(int)
+    observed_names: dict[tuple[str, str | None], Counter[str]] = defaultdict(Counter)
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        thread_id = str(post["thread_id"])
+        month = month_by_thread_id[thread_id]
+        company_id = post.get("company_id")
+        counts[(month, company_id)] += 1
+        name = post.get("company_name_observed")
+        if isinstance(name, str) and name:
+            observed_names[(month, company_id)][name] += 1
+    rows = []
+    for (month, company_id), hiring_post_count in sorted(
+        counts.items(),
+        key=lambda item: (item[0][0], item[0][1] or ""),
+    ):
+        preferred_name = company_name_by_id.get(company_id) if company_id else None
+        fallback_name = observed_names[(month, company_id)].most_common(1)[0][0] if observed_names[(month, company_id)] else None
+        rows.append(
+            {
+                "thread_month": month,
+                "company_id": company_id,
+                "company_name": preferred_name or fallback_name,
+                "hiring_post_count": hiring_post_count,
+            }
+        )
+    return rows
+
+
+def remote_status_trends_by_month(posts: list[dict[str, object]], month_by_thread_id: dict[str, str]) -> list[dict[str, object]]:
+    """Aggregate hiring-post counts by remote status and month."""
+
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    total_counts: Counter[str] = Counter()
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        month = month_by_thread_id[str(post["thread_id"])]
+        status = str(post.get("remote_status") or "unspecified")
+        counts[(month, status)] += 1
+        total_counts[month] += 1
+    rows = []
+    for (month, status), count in sorted(counts.items()):
+        rows.append(
+            {
+                "thread_month": month,
+                "remote_status": status,
+                "hiring_post_count": count,
+                "month_total_hiring_posts": total_counts[month],
+            }
+        )
+    return rows
+
+
+def remote_status_share_by_month(remote_rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Convert remote-status counts to monthly percentages."""
+
+    rows = []
+    for row in remote_rows:
+        month_total = int(row["month_total_hiring_posts"])
+        count = int(row["hiring_post_count"])
+        share = 0.0 if month_total == 0 else round((count / month_total) * 100.0, 2)
+        rows.append(
+            {
+                "thread_month": row["thread_month"],
+                "remote_status": row["remote_status"],
+                "hiring_post_count": count,
+                "month_total_hiring_posts": month_total,
+                "share_pct": share,
+            }
+        )
+    return rows
+
+
+def role_family_trends_by_month(
+    roles: list[dict[str, object]],
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Aggregate role-family counts by month."""
+
+    thread_id_by_post_id = {row["post_id"]: row["thread_id"] for row in posts}
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for role in roles:
+        role_family = str(role.get("role_family") or "unknown")
+        post_id = str(role["post_id"])
+        thread_id = thread_id_by_post_id[post_id]
+        month = month_by_thread_id[str(thread_id)]
+        counts[(month, role_family)] += 1
+    rows = []
+    for (month, role_family), role_count in sorted(counts.items()):
+        rows.append(
+            {
+                "thread_month": month,
+                "role_family": role_family,
+                "role_count": role_count,
+            }
+        )
+    return rows
+
+
+def recurring_company_hiring_patterns(
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Summarize recurring company activity across months."""
+
+    active_months_by_company: dict[str, set[str]] = defaultdict(set)
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        company_id = post.get("company_id")
+        if company_id is None:
+            continue
+        month = month_by_thread_id[str(post["thread_id"])]
+        active_months_by_company[str(company_id)].add(month)
+    rows = []
+    for company_id, months in sorted(active_months_by_company.items()):
+        sorted_months = sorted(months)
+        rows.append(
+            {
+                "company_id": company_id,
+                "company_name": company_name_by_id.get(company_id),
+                "active_month_count": len(sorted_months),
+                "first_seen_thread_month": sorted_months[0],
+                "last_seen_thread_month": sorted_months[-1],
+                "active_months": ",".join(sorted_months),
+            }
+        )
+    rows.sort(key=lambda row: (-int(row["active_month_count"]), str(row["company_name"] or "")))
+    return rows
+
+
+def load_jsonl(path: Path) -> list[dict[str, object]]:
+    """Load rows from a JSONL file."""
+
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def write_csv(path: Path, rows: list[dict[str, object]]) -> Path:
+    """Write rows to CSV."""
+
+    fieldnames = list(rows[0].keys()) if rows else []
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        if fieldnames:
+            writer.writeheader()
+            writer.writerows(rows)
+    return path
+
+
+def write_manifest(path: Path, outputs: dict[str, Path]) -> Path:
+    """Write an analytics manifest."""
+
+    payload = {
+        "analytics_version": "v1",
+        "output_paths": {name: str(output_path) for name, output_path in outputs.items()},
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def write_analytics_visuals(
+    *,
+    visuals_dir: Path,
+    company_posting_rows: list[dict[str, object]],
+    remote_rows: list[dict[str, object]],
+    remote_share_rows: list[dict[str, object]],
+    role_family_rows: list[dict[str, object]],
+    recurring_rows: list[dict[str, object]],
+) -> dict[str, Path]:
+    """Write a polished visual for each core analytical output."""
+
+    plt, pd, sns = plotting_modules(visuals_dir)
+    apply_plot_style(plt, sns)
+
+    outputs = {
+        "company_posting_counts_visual": plot_company_posting_counts(
+            plt, pd, sns, visuals_dir / "company_posting_counts_by_month.png", company_posting_rows
+        ),
+        "remote_status_trends_visual": plot_remote_status_trends(
+            plt, pd, visuals_dir / "remote_status_trends_by_month.png", remote_rows
+        ),
+        "remote_status_share_visual": plot_remote_status_share(
+            plt, pd, visuals_dir / "remote_status_share_by_month.png", remote_share_rows
+        ),
+        "role_family_trends_visual": plot_role_family_trends(
+            plt, pd, sns, visuals_dir / "role_family_trends_by_month.png", role_family_rows
+        ),
+        "recurring_company_hiring_patterns_visual": plot_recurring_company_patterns(
+            plt, pd, visuals_dir / "recurring_company_hiring_patterns.png", recurring_rows
+        ),
+    }
+    outputs["visual_index"] = write_visual_index(visuals_dir / "README.md", outputs)
+    return outputs
+
+
+def plotting_modules(visuals_dir: Path):
+    """Load plotting modules with a writable Matplotlib config directory."""
+
+    mpl_config_dir = visuals_dir / ".mplconfig"
+    mpl_config_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MPLCONFIGDIR", str(mpl_config_dir))
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import seaborn as sns
+
+    return plt, pd, sns
+
+
+def apply_plot_style(plt, sns) -> None:
+    """Apply a consistent, high-contrast visual style."""
+
+    sns.set_theme(style="whitegrid", context="talk")
+    plt.rcParams.update(
+        {
+            "figure.facecolor": "#f5f1e8",
+            "axes.facecolor": "#fffaf0",
+            "axes.edgecolor": "#2b2825",
+            "axes.labelcolor": "#2b2825",
+            "axes.titleweight": "bold",
+            "text.color": "#2b2825",
+            "xtick.color": "#2b2825",
+            "ytick.color": "#2b2825",
+            "font.size": 12,
+        }
+    )
+
+
+def plot_company_posting_counts(plt, pd, sns, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot a dot-timeline for the most recurrent companies."""
+
+    frame = pd.DataFrame(rows)
+    frame["company_name"] = frame["company_name"].fillna("[unresolved]")
+    recurring = (
+        frame.groupby("company_name")["hiring_post_count"]
+        .agg(["sum", "count"])
+        .reset_index()
+        .rename(columns={"sum": "total_posts", "count": "active_months"})
+        .sort_values(["active_months", "total_posts", "company_name"], ascending=[False, False, True])
+        .head(18)
+    )
+    filtered = frame[frame["company_name"].isin(recurring["company_name"])].copy()
+    company_order = recurring["company_name"].tolist()
+    month_order = sorted(filtered["thread_month"].unique().tolist())
+    filtered["company_name"] = pd.Categorical(filtered["company_name"], categories=company_order, ordered=True)
+    filtered["thread_month"] = pd.Categorical(filtered["thread_month"], categories=month_order, ordered=True)
+
+    fig, ax = plt.subplots(figsize=(14, 9))
+    scatter = ax.scatter(
+        filtered["thread_month"],
+        filtered["company_name"],
+        s=filtered["hiring_post_count"].astype(int) * 260,
+        c=filtered["hiring_post_count"].astype(int),
+        cmap="YlOrBr",
+        alpha=0.88,
+        edgecolors="#2b2825",
+        linewidths=1.1,
+    )
+    for _, row in filtered.iterrows():
+        ax.text(
+            row["thread_month"],
+            row["company_name"],
+            str(int(row["hiring_post_count"])),
+            ha="center",
+            va="center",
+            fontsize=10,
+            fontweight="bold",
+            color="#1e1b18",
+        )
+    ax.set_title("Top Recurring Companies By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Company")
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("Hiring posts")
+    ax.grid(axis="x", linestyle="--", linewidth=0.7, alpha=0.35)
+    ax.grid(axis="y", visible=False)
+    fig.subplots_adjust(left=0.33, right=0.92, top=0.9, bottom=0.12)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_remote_status_trends(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot stacked monthly remote-status counts."""
+
+    frame = pd.DataFrame(rows)
+    order = ["remote", "hybrid", "onsite", "unspecified"]
+    pivot = frame.pivot_table(
+        index="thread_month",
+        columns="remote_status",
+        values="hiring_post_count",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    for status in order:
+        if status not in pivot.columns:
+            pivot[status] = 0
+    pivot = pivot[order]
+    colors = {
+        "remote": "#2a9d8f",
+        "hybrid": "#e9c46a",
+        "onsite": "#e76f51",
+        "unspecified": "#8d99ae",
+    }
+    fig, ax = plt.subplots(figsize=(11, 7), constrained_layout=True)
+    bottom = None
+    for status in order:
+        values = pivot[status].tolist()
+        ax.bar(pivot.index.tolist(), values, bottom=bottom, label=status.title(), color=colors[status], edgecolor="#2b2825")
+        bottom = values if bottom is None else [left + right for left, right in zip(bottom, values)]
+    ax.set_title("Remote Status Trends By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Hiring posts")
+    ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot stacked monthly remote-status percentages."""
+
+    frame = pd.DataFrame(rows)
+    order = ["remote", "hybrid", "onsite", "unspecified"]
+    pivot = frame.pivot_table(
+        index="thread_month",
+        columns="remote_status",
+        values="share_pct",
+        aggfunc="sum",
+        fill_value=0.0,
+    )
+    for status in order:
+        if status not in pivot.columns:
+            pivot[status] = 0.0
+    pivot = pivot[order]
+    colors = {
+        "remote": "#2a9d8f",
+        "hybrid": "#e9c46a",
+        "onsite": "#e76f51",
+        "unspecified": "#8d99ae",
+    }
+    fig, ax = plt.subplots(figsize=(11.5, 7), constrained_layout=True)
+    bottom = None
+    for status in order:
+        values = pivot[status].tolist()
+        ax.bar(
+            pivot.index.tolist(),
+            values,
+            bottom=bottom,
+            label=status.title(),
+            color=colors[status],
+            edgecolor="#2b2825",
+        )
+        bottom = values if bottom is None else [left + right for left, right in zip(bottom, values)]
+    ax.set_title("Remote Status Share By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Share of hiring posts (%)")
+    ax.set_ylim(0, 100)
+    ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_role_family_trends(plt, pd, sns, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot a heatmap of role families by month."""
+
+    frame = pd.DataFrame(rows)
+    top_families = (
+        frame.groupby("role_family", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "role_family"], ascending=[False, True])
+        .head(12)
+    )
+    filtered = frame[frame["role_family"].isin(top_families["role_family"])]
+    pivot = filtered.pivot_table(
+        index="role_family",
+        columns="thread_month",
+        values="role_count",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    pivot = pivot.loc[top_families["role_family"]]
+    fig, ax = plt.subplots(figsize=(11.5, 7.5), constrained_layout=True)
+    heatmap = sns.heatmap(
+        pivot,
+        cmap="crest",
+        linewidths=0.5,
+        linecolor="#e6dfd0",
+        cbar_kws={"label": "Role count"},
+        annot=True,
+        fmt="g",
+        annot_kws={"fontsize": 10, "fontweight": "bold"},
+        ax=ax,
+    )
+    value_threshold = float(pivot.to_numpy().max()) * 0.45 if not pivot.empty else 0.0
+    for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+        text.set_color("#fffaf0" if float(value) >= value_threshold else "#17323b")
+    ax.set_title("Role Family Trends By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Role family")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_recurring_company_patterns(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot companies with the widest month coverage."""
+
+    frame = pd.DataFrame(rows)
+    top = frame.sort_values(["active_month_count", "company_name"], ascending=[False, True]).head(20)
+    fig, ax = plt.subplots(figsize=(12, 8), constrained_layout=True)
+    ax.barh(top["company_name"], top["active_month_count"], color="#264653", edgecolor="#1b1a17")
+    ax.invert_yaxis()
+    ax.set_title("Recurring Company Hiring Patterns")
+    ax.set_xlabel("Active thread months")
+    ax.set_ylabel("Company")
+    for index, value in enumerate(top["active_month_count"]):
+        ax.text(value + 0.03, index, str(value), va="center", fontsize=10)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def write_visual_index(path: Path, outputs: dict[str, Path]) -> Path:
+    """Write a small visual index for quick browsing."""
+
+    lines = [
+        "# Analytics Visuals",
+        "",
+        "Generated from Step 16 recurring analytical outputs.",
+        "",
+    ]
+    for name, output_path in outputs.items():
+        lines.append(f"- `{name}`: `{output_path.name}`")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
