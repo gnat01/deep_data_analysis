@@ -8,6 +8,7 @@ from pathlib import Path
 
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
+from parse import parse_and_write_thread_posts
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 
 
@@ -41,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fetch_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
     fetch_parser.add_argument("--path", type=Path, default=default_source_index_path())
+
+    parse_parser = subparsers.add_parser(
+        "parse-thread-posts",
+        help="Parse stored raw thread HTML into top-level posts JSONL.",
+    )
+    parse_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
     return parser
 
 
@@ -79,6 +86,19 @@ def main() -> int:
                     "html_path": str(html_path),
                     "metadata_path": str(metadata_path),
                     "manifest_path": str(manifest_path),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.command == "parse-thread-posts":
+        output_path = parse_and_write_thread_posts(args.thread_month)
+        print(
+            json.dumps(
+                {
+                    "thread_month": args.thread_month,
+                    "posts_jsonl_path": str(output_path),
                 },
                 indent=2,
             )

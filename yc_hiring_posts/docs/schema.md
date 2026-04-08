@@ -12,6 +12,16 @@ Recommended layers:
 2. Normalized layer: cleaned, analysis-ready fields.
 3. Enriched layer: derived attributes, similarity scores, and semantic annotations.
 
+## `misc` Catchall Policy
+
+Use `misc` as a JSON object whenever the parser or normalizer encounters useful information that does not yet fit a first-class column.
+
+For V1, the parser should be loss-minimizing:
+
+- do not silently discard useful structured information
+- preserve unresolved, extra, or evolving fields in `misc`
+- keep the original raw HTML or payloads available for auditability
+
 ## Core Entities
 
 ### 1. `threads`
@@ -47,6 +57,7 @@ Suggested fields:
 - `collection_timestamp_utc`
 - `is_deleted`
 - `is_dead`
+- `misc`
 - `raw_payload_hash`
 
 ### 3. `posts`
@@ -68,6 +79,7 @@ Suggested fields:
 - `visa_sponsorship_text`
 - `compensation_text`
 - `post_text_clean`
+- `misc`
 - `parser_version`
 - `parse_confidence`
 - `created_at_utc`
@@ -93,6 +105,7 @@ Suggested fields:
 - `role_location_text`
 - `role_remote_status`
 - `role_compensation_id`
+- `misc`
 
 ### 5. `companies`
 

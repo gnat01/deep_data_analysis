@@ -9,5 +9,5 @@ description = "Data ingestion and analysis for YC hiring posts."
 requires-python = ">=3.11"
 
 [tool.setuptools]
-py-modules = ["cli", "discovery", "fetch", "models", "source_index", "storage"]
+py-modules = ["cli", "discovery", "fetch", "models", "parse", "source_index", "storage"]
 package-dir = {"" = "src"}

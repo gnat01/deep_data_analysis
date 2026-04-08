@@ -24,12 +24,14 @@ Deliverables:
 - hiring-post classifier
 - extraction logic for company, location, remote status, and compensation text
 - normalized `posts`, `roles`, and `companies` tables
+- explicit `misc` preservation for unresolved or extra fields
 
 Success criteria:
 
 - raw top-level posts are classified cleanly into hiring vs non-hiring
 - multi-role posts are represented cleanly
 - extraction outputs are auditable against source text
+- useful leftovers are preserved in `misc` rather than silently discarded
 
 ## Phase 3: Core Analytics
 

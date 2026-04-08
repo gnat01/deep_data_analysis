@@ -1,0 +1,12 @@
+{
+  "artifacts": {
+    "thread_html": "/Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts/data/raw/2026-01/thread.html",
+    "thread_metadata": "/Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts/data/raw/2026-01/thread.json"
+  },
+  "fetched_at_utc": "2026-04-08T09:55:09.928088+00:00",
+  "raw_payload_hash": "57315e9ae53e199af1e74e72f14cdd73b32eb09ece2b83cdf9a3ef8b647ff076",
+  "source_url": "https://news.ycombinator.com/item?id=46466074",
+  "status": "verified",
+  "thread_id": "46466074",
+  "thread_month": "2026-01"
+}

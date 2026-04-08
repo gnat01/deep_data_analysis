@@ -59,6 +59,7 @@ The collection layer should:
 - avoid silently overwriting source changes
 - support incremental monthly refreshes
 - be robust to deleted, edited, or unavailable records
+- preserve extra structured fragments in `misc` when they do not yet fit first-class fields
 
 ## Recommended Raw Storage Strategy
 
@@ -105,7 +106,6 @@ This is the preferred V1 workflow because it is simple, robust, and tends to rec
 
 ## Scraping Strategy
 
-Once a thread URL is verified, the ingestion layer should scrape the thread page directly and capture top-level posts from the HTML.
 Once a thread URL is verified, the ingestion layer should scrape the thread page directly and capture top-level posts from the HTML.
 
 Recommended approach:

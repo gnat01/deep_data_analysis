@@ -24,6 +24,7 @@ The purpose of V1 is to build a trustworthy ingestion and normalization pipeline
 - normalize only after raw capture is stable
 - prefer explicit control tables over clever automation
 - keep V1 conservative and deterministic
+- preserve structured leftovers in `misc` rather than dropping them
 
 ## Ordered Build Steps
 
@@ -122,6 +123,8 @@ The scraper should extract:
 
 Replies should be ignored in V1. Hiring-post classification happens later in normalization, not during raw capture.
 
+If extracted information does not fit the current first-class raw-post fields, retain it in `misc`.
+
 ### 9. Add Raw Ingestion Validation
 
 The ingestion stage should validate:
@@ -153,6 +156,8 @@ The first normalization pass should produce a `posts` layer with fields such as:
 This layer should be conservative and traceable back to raw source records.
 
 At this stage, `posts` becomes the normalized layer that decides whether a captured top-level raw post is actually a hiring post.
+
+If the normalized layer encounters useful leftovers that do not yet fit first-class fields, retain them in `misc`.
 
 ### 12. Build Role Extraction
 

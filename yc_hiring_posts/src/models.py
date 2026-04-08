@@ -40,7 +40,7 @@ class ThreadRecord:
 
 @dataclass(frozen=True)
 class RawPostRecord:
-    """One top-level hiring post captured from a thread."""
+    """One top-level post captured from a thread."""
 
     raw_post_id: str
     thread_id: str
@@ -55,4 +55,5 @@ class RawPostRecord:
     is_dead: bool = False
     raw_html: str | None = None
     raw_payload_json: str | None = None
+    misc: dict[str, object] | None = None
     raw_payload_hash: str | None = None
