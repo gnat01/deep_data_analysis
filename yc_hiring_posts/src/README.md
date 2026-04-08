@@ -8,6 +8,7 @@ Current modules:
 - `companies.py`
 - `discovery.py`
 - `fetch.py`
+- `materialize.py`
 - `models.py`
 - `normalize.py`
 - `parse.py`

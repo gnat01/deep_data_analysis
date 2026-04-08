@@ -1,6 +1,6 @@
 # How To Run
 
-This document explains exactly how to run **Steps 4 through 12** from the parent project directory:
+This document explains exactly how to run **Steps 4 through 14** from the parent project directory:
 
 ```bash
 cd /Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts
@@ -260,6 +260,33 @@ PYTHONPATH=src python src/cli.py normalize-thread-companies 2024-11
 PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-08
 ```
 
+## Step 14: Materialize The V1 Core Tables
+
+Materialize the consolidated V1 tables into `data/processed/`:
+
+```bash
+PYTHONPATH=src python src/cli.py materialize-v1-core-tables
+```
+
+This writes:
+
+```text
+data/processed/v1_core_tables/threads.jsonl
+data/processed/v1_core_tables/raw_posts.jsonl
+data/processed/v1_core_tables/posts.jsonl
+data/processed/v1_core_tables/roles.jsonl
+data/processed/v1_core_tables/companies.jsonl
+data/processed/v1_core_tables_manifest.json
+```
+
+Inspect the processed outputs:
+
+```bash
+ls data/processed/v1_core_tables
+sed -n '1,5p' data/processed/v1_core_tables/threads.jsonl
+sed -n '1,40p' data/processed/v1_core_tables_manifest.json
+```
+
 ## Recommended End-To-End Order For One New Month
 
 Example for `2025-03`:
@@ -272,6 +299,7 @@ PYTHONPATH=src python src/cli.py validate-thread-raw 2025-03
 PYTHONPATH=src python src/cli.py normalize-thread-posts 2025-03
 PYTHONPATH=src python src/cli.py extract-thread-roles 2025-03
 PYTHONPATH=src python src/cli.py normalize-thread-companies 2025-03
+PYTHONPATH=src python src/cli.py materialize-v1-core-tables
 ```
 
 ## Tests
@@ -281,6 +309,7 @@ Run the full current test suite:
 ```bash
 python -m pytest tests/test_source_index.py tests/test_fetch.py tests/test_parse.py tests/test_validate.py tests/test_normalize.py tests/test_roles.py
 python -m pytest tests/test_companies.py
+python -m pytest tests/test_materialize.py
 ```
 
 Run only one area:
@@ -309,6 +338,14 @@ Normalized month outputs:
 ```text
 data/interim/<YYYY-MM>/posts_normalized.jsonl
 data/interim/<YYYY-MM>/roles.jsonl
+data/interim/<YYYY-MM>/companies.jsonl
+```
+
+Processed consolidated outputs:
+
+```text
+data/processed/v1_core_tables/
+data/processed/v1_core_tables_manifest.json
 ```
 
 ## Notes

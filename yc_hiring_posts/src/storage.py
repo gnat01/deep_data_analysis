@@ -23,6 +23,10 @@ def interim_data_dir() -> Path:
     return data_dir() / "interim"
 
 
+def processed_data_dir() -> Path:
+    return data_dir() / "processed"
+
+
 def month_raw_dir(thread_month: str) -> Path:
     """Return the raw-data folder for one thread month."""
 
@@ -47,6 +51,14 @@ def ensure_month_interim_dir(thread_month: str) -> Path:
     """Create and return the interim-data folder for one thread month."""
 
     target = month_interim_dir(thread_month)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def ensure_processed_dir() -> Path:
+    """Create and return the processed-data folder."""
+
+    target = processed_data_dir()
     target.mkdir(parents=True, exist_ok=True)
     return target
 

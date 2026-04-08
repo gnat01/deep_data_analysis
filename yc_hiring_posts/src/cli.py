@@ -9,6 +9,7 @@ from pathlib import Path
 from companies import normalize_and_write_companies
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
+from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
 from roles import extract_and_write_roles
@@ -70,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve conservative company ids and write the company dimension.",
     )
     companies_parser.add_argument("thread_month", help="Month in YYYY-MM format.")
+
+    materialize_parser = subparsers.add_parser(
+        "materialize-v1-core-tables",
+        help="Materialize consolidated V1 core tables into the processed layer.",
+    )
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -178,6 +184,11 @@ def main() -> int:
                 indent=2,
             )
         )
+        return 0
+
+    if args.command == "materialize-v1-core-tables":
+        outputs = materialize_v1_core_tables()
+        print(json.dumps({key: str(value) for key, value in outputs.items()}, indent=2))
         return 0
 
     if args.command == "validate-thread-raw":

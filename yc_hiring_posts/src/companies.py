@@ -55,6 +55,7 @@ def normalize_companies_for_thread_month(thread_month: str) -> tuple[list[Compan
     enriched_posts = []
     for post in posts:
         updated = dict(post)
+        updated.pop("company_name_normalized", None)
         match_key = derive_company_match_key(post.get("company_name_observed"))
         updated["company_id"] = company_id_by_key.get(match_key)
         misc = dict(updated.get("misc") or {})
