@@ -19,11 +19,15 @@ def test_load_source_index_returns_seeded_months() -> None:
     assert entries[-1].thread_month == "2026-04"
 
 
-def test_verified_entries_empty_for_seed_file() -> None:
+def test_verified_entries_present_for_verified_source_index() -> None:
     source_index_path = PROJECT_ROOT / "data" / "source_index.csv"
     entries = load_source_index(source_index_path)
 
-    assert verified_entries(entries) == []
+    verified = verified_entries(entries)
+
+    assert len(verified) == len(entries)
+    assert verified[0].thread_month == "2024-01"
+    assert verified[-1].thread_month == "2026-04"
 
 
 def test_google_query_variants_match_expected_forms() -> None:

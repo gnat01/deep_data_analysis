@@ -1,29 +1,29 @@
 thread_month,thread_date,thread_title,thread_id,source_url,source_system,status,notes
-2024-01,,,,,hacker_news,planned,Seeded placeholder month
-2024-02,,,,,hacker_news,planned,Seeded placeholder month
-2024-03,,,,,hacker_news,planned,Seeded placeholder month
-2024-04,,,,,hacker_news,planned,Seeded placeholder month
-2024-05,,,,,hacker_news,planned,Seeded placeholder month
-2024-06,,,,,hacker_news,planned,Seeded placeholder month
-2024-07,,,,,hacker_news,planned,Seeded placeholder month
-2024-08,,,,,hacker_news,planned,Seeded placeholder month
-2024-09,,,,,hacker_news,planned,Seeded placeholder month
-2024-10,,,,,hacker_news,planned,Seeded placeholder month
-2024-11,,,,,hacker_news,planned,Seeded placeholder month
-2024-12,,,,,hacker_news,planned,Seeded placeholder month
-2025-01,,,,,hacker_news,planned,Seeded placeholder month
-2025-02,,,,,hacker_news,planned,Seeded placeholder month
-2025-03,,,,,hacker_news,planned,Seeded placeholder month
-2025-04,,,,,hacker_news,planned,Seeded placeholder month
-2025-05,,,,,hacker_news,planned,Seeded placeholder month
-2025-06,,,,,hacker_news,planned,Seeded placeholder month
-2025-07,,,,,hacker_news,planned,Seeded placeholder month
-2025-08,,,,,hacker_news,planned,Seeded placeholder month
-2025-09,,,,,hacker_news,planned,Seeded placeholder month
-2025-10,,,,,hacker_news,planned,Seeded placeholder month
-2025-11,,,,,hacker_news,planned,Seeded placeholder month
-2025-12,,,,,hacker_news,planned,Seeded placeholder month
-2026-01,,,,,hacker_news,planned,Seeded placeholder month
-2026-02,,,,,hacker_news,planned,Seeded placeholder month
-2026-03,,,,,hacker_news,planned,Seeded placeholder month
-2026-04,,,,,hacker_news,planned,Seeded placeholder month
+2024-01,2024-01-02,"Ask HN: Who is hiring? (January 2024)",38842977,https://news.ycombinator.com/item?id=38842977,hacker_news,verified,Verified via web search on 2026-04-08
+2024-02,2024-02-01,"Ask HN: Who is hiring? (February 2024)",39217310,https://news.ycombinator.com/item?id=39217310,hacker_news,verified,Verified via web search on 2026-04-08
+2024-03,2024-03-01,"Ask HN: Who is hiring? (March 2024)",39562986,https://news.ycombinator.com/item?id=39562986,hacker_news,verified,Verified via web search on 2026-04-08
+2024-04,2024-04-01,"Ask HN: Who is hiring? (April 2024)",39894820,https://news.ycombinator.com/item?id=39894820,hacker_news,verified,Verified via web search on 2026-04-08
+2024-05,2024-05-01,"Ask HN: Who is hiring? (May 2024)",40224213,https://news.ycombinator.com/item?id=40224213,hacker_news,verified,Verified via web search on 2026-04-08
+2024-06,2024-06-03,"Ask HN: Who is hiring? (June 2024)",40563283,https://news.ycombinator.com/item?id=40563283,hacker_news,verified,Verified via web search on 2026-04-08
+2024-07,2024-07-01,"Ask HN: Who is hiring? (July 2024)",40846428,https://news.ycombinator.com/item?id=40846428,hacker_news,verified,Verified via web search on 2026-04-08
+2024-08,2024-08-01,"Ask HN: Who is hiring? (August 2024)",41129813,https://news.ycombinator.com/item?id=41129813,hacker_news,verified,Verified via web search on 2026-04-08
+2024-09,2024-09-02,"Ask HN: Who is hiring? (September 2024)",41425910,https://news.ycombinator.com/item?id=41425910,hacker_news,verified,Verified via web search on 2026-04-08
+2024-10,2024-10-01,"Ask HN: Who is hiring? (October 2024)",41709301,https://news.ycombinator.com/item?id=41709301,hacker_news,verified,Verified via web search on 2026-04-08
+2024-11,2024-11-01,"Ask HN: Who is hiring? (November 2024)",42017580,https://news.ycombinator.com/item?id=42017580,hacker_news,verified,Verified via web search on 2026-04-08
+2024-12,2024-12-02,"Ask HN: Who is hiring? (December 2024)",42297424,https://news.ycombinator.com/item?id=42297424,hacker_news,verified,Verified via web search on 2026-04-08
+2025-01,2025-01-02,"Ask HN: Who is hiring? (January 2025)",42575537,https://news.ycombinator.com/item?id=42575537,hacker_news,verified,Verified via web search on 2026-04-08
+2025-02,2025-02-03,"Ask HN: Who is hiring? (February 2025)",42919502,https://news.ycombinator.com/item?id=42919502,hacker_news,verified,Verified via web search on 2026-04-08
+2025-03,2025-03-03,"Ask HN: Who is hiring? (March 2025)",43243024,https://news.ycombinator.com/item?id=43243024,hacker_news,verified,Verified via web search on 2026-04-08
+2025-04,,"Ask HN: Who is hiring? (April 2025)",43547611,https://news.ycombinator.com/item?id=43547611,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-05,,"Ask HN: Who is hiring? (May 2025)",43858554,https://news.ycombinator.com/item?id=43858554,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-06,,"Ask HN: Who is hiring? (June 2025)",44159528,https://news.ycombinator.com/item?id=44159528,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-07,,"Ask HN: Who is hiring? (July 2025)",44434576,https://news.ycombinator.com/item?id=44434576,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-08,,"Ask HN: Who is hiring? (August 2025)",44757794,https://news.ycombinator.com/item?id=44757794,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-09,,"Ask HN: Who is hiring? (September 2025)",45093192,https://news.ycombinator.com/item?id=45093192,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-10,,"Ask HN: Who is hiring? (October 2025)",45438503,https://news.ycombinator.com/item?id=45438503,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-11,,"Ask HN: Who is hiring? (November 2025)",45800465,https://news.ycombinator.com/item?id=45800465,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2025-12,,"Ask HN: Who is hiring? (December 2025)",46108941,https://news.ycombinator.com/item?id=46108941,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2026-01,,"Ask HN: Who is hiring? (January 2026)",46466074,https://news.ycombinator.com/item?id=46466074,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2026-02,,"Ask HN: Who is hiring? (February 2026)",46857488,https://news.ycombinator.com/item?id=46857488,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2026-03,,"Ask HN: Who is hiring? (March 2026)",47219668,https://news.ycombinator.com/item?id=47219668,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
+2026-04,,"Ask HN: Who is hiring? (April 2026)",47601859,https://news.ycombinator.com/item?id=47601859,hacker_news,verified,Verified via web search on 2026-04-08; thread_date not captured from search result
