@@ -1,0 +1,12 @@
+A simple problem on the surface
+
+Get codex to scrape the hiring posts on Y Combinator all the way from say January 2024 to now and start with summarising the data by:
+Company
+Remote v Not
+Job profiles
+
+Make comprehensive time series data of these types of simple asks to find out company activity, how what they are looking for changes, are there companies perpetually posting the SAME ad (I am looking at you, DuckDuckGo!), can we glean something on pay offered in Jan 2025 versus now for the same job family?
+
+After this - we deep dive into the NLP analysis of each job profile on each such thread and start assimilating that into a knowledge base
+
+After all this is done - we should be able to ask natural language Qs of this knowledge base and have it return crisp, pinpoint, correct (non-BS, non-hallucinated) answers
