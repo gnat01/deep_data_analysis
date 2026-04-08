@@ -76,3 +76,28 @@ def test_large_compensation_like_spans_are_flagged_low_accuracy() -> None:
     assert target.misc is not None
     assert target.misc["compensation_text_accuracy_reason"] is None
     assert target.misc["funding_context_detected"] is True
+
+
+def test_filled_update_post_is_not_hiring() -> None:
+    target = next(
+        post
+        for post in normalize_thread_month_to_posts("2025-03")
+        if post.company_name_observed
+        == "*Update*: Thanks everyone for applying, this job has been filled! I'll leave the initial job description below for transparency."
+    )
+
+    assert target.is_hiring_post is False
+    assert target.misc is not None
+    assert "closure_or_filled_notice" in target.misc["classification_signals"]
+
+
+def test_closed_post_is_not_hiring() -> None:
+    target = next(
+        post
+        for post in normalize_thread_month_to_posts("2025-08")
+        if post.company_name_observed == "* CLOSED *"
+    )
+
+    assert target.is_hiring_post is False
+    assert target.misc is not None
+    assert "closure_or_filled_notice" in target.misc["classification_signals"]

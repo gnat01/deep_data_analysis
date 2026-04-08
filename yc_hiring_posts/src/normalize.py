@@ -91,6 +91,13 @@ HIRING_SIGNAL_PATTERNS = (
     re.compile(r"\bjob\b", re.IGNORECASE),
     re.compile(r"\bpositions?\b", re.IGNORECASE),
 )
+NON_HIRING_CLOSURE_PATTERNS = (
+    re.compile(r"\bjob has been filled\b", re.IGNORECASE),
+    re.compile(r"\bposition has been filled\b", re.IGNORECASE),
+    re.compile(r"\brole has been filled\b", re.IGNORECASE),
+    re.compile(r"\bthanks everyone for applying\b", re.IGNORECASE),
+    re.compile(r"\bclosed\b", re.IGNORECASE),
+)
 FUNDING_CONTEXT_RE = re.compile(
     r"\b(raised|funding|funded|venture capital|capital|seed|series [a-z]|arr|revenue)\b",
     re.IGNORECASE,
@@ -390,6 +397,9 @@ def classify_hiring_post(
         return False, signals
     if not raw_text:
         signals.append("empty_text")
+        return False, signals
+    if any(pattern.search(raw_text) for pattern in NON_HIRING_CLOSURE_PATTERNS):
+        signals.append("closure_or_filled_notice")
         return False, signals
     if company_name:
         signals.append("headline_company_segment")
