@@ -18,6 +18,7 @@ from analytics import (
     company_embedding_drift,
     company_month_centroid_rows,
     company_post_vs_role_spread,
+    company_post_vs_role_spread_windowed,
     company_projection_payload,
     company_role_semantic_spread,
     company_semantic_spread,
@@ -571,7 +572,7 @@ def change_analysis_frames(
     filtered_posts: pd.DataFrame,
     filtered_roles: pd.DataFrame,
     companies: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if filtered_posts.empty or filtered_roles.empty:
         empty_comparison = pd.DataFrame(
             columns=[
@@ -612,7 +613,22 @@ def change_analysis_frames(
                 "angle_from_previous_deg",
             ]
         )
-        return empty_comparison, empty_drift, empty_drift_monthly, empty_drift
+        empty_windowed = pd.DataFrame(
+            columns=[
+                "window_index",
+                "window_start_month",
+                "window_end_month",
+                "window_label",
+                "company_name",
+                "post_count",
+                "role_count",
+                "post_mean_angle_deg",
+                "role_mean_angle_deg",
+                "spread_gap_deg",
+                "spread_ratio",
+            ]
+        )
+        return empty_comparison, empty_drift, empty_drift_monthly, empty_drift, empty_windowed
 
     company_name_by_id = dict(zip(companies["company_id"], companies["company_name_observed_preferred"], strict=False))
     month_by_thread_id = dict(zip(filtered_posts["thread_id"].astype(str), filtered_posts["thread_month"].astype(str), strict=False))
@@ -621,6 +637,7 @@ def change_analysis_frames(
     semantic_rows = company_semantic_spread(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     role_spread_rows = company_role_semantic_spread(role_rows, post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     comparison_rows = company_post_vs_role_spread(semantic_rows, role_spread_rows)
+    windowed_rows = company_post_vs_role_spread_windowed(post_rows, role_rows, company_name_by_id, month_by_thread_id, window_size_months=6, top_n=100)
     drift_rows, drift_monthly_rows = company_embedding_drift(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     changed_rows = changed_companies_ranked(comparison_rows, drift_rows)
     return (
@@ -628,6 +645,7 @@ def change_analysis_frames(
         pd.DataFrame(drift_rows),
         pd.DataFrame(drift_monthly_rows),
         pd.DataFrame(changed_rows),
+        pd.DataFrame(windowed_rows),
     )
 
 
@@ -777,6 +795,90 @@ def company_projection_chart(company_posts: pd.DataFrame):
     ax.legend(frameon=True, fontsize=8, ncols=2)
     ax.grid(alpha=0.2, linestyle="--")
     return fig
+
+
+def windowed_post_vs_role_scatter(frame: pd.DataFrame, selected_window: str):
+    if frame.empty:
+        return None
+    subset = frame[frame["window_label"] == selected_window].copy()
+    if subset.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(11.8, 7.8))
+    scatter = ax.scatter(
+        subset["role_mean_angle_deg"],
+        subset["post_mean_angle_deg"],
+        s=subset["post_count"].astype(float) * 7.0,
+        c=subset["spread_gap_deg"],
+        cmap="coolwarm",
+        alpha=0.82,
+        edgecolors="#1b1a17",
+        linewidths=0.6,
+    )
+    limit = max(subset["role_mean_angle_deg"].max(), subset["post_mean_angle_deg"].max()) + 2.0
+    ax.plot([0, limit], [0, limit], linestyle="--", linewidth=1.2, color="#8d99ae")
+    ax.set_xlim(0, limit)
+    ax.set_ylim(0, limit)
+    ax.set_title(f"Post Spread vs Role Spread: {selected_window}")
+    ax.set_xlabel("Role mean angle (degrees)")
+    ax.set_ylabel("Post mean angle (degrees)")
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("Spread gap (post - role)")
+    ax.grid(alpha=0.22, linestyle="--")
+    return fig
+
+
+def windowed_binned_boxplot(frame: pd.DataFrame, selected_window: str):
+    if frame.empty:
+        return None
+    subset = frame[frame["window_label"] == selected_window].copy()
+    if subset.empty:
+        return None
+    return binned_post_vs_role_boxplot(subset)
+
+
+def company_windowed_trajectory(frame: pd.DataFrame, company_name: str):
+    if frame.empty:
+        return None
+    subset = frame[frame["company_name"] == company_name].sort_values("window_index").copy()
+    if subset.empty:
+        return None
+    labels = subset["window_label"].tolist()
+    positions = list(range(len(labels)))
+    fig, ax = plt.subplots(figsize=(12.6, 5.6))
+    ax.plot(positions, subset["post_mean_angle_deg"], marker="o", linewidth=2.8, color="#264653", label="Post mean angle")
+    ax.plot(positions, subset["role_mean_angle_deg"], marker="s", linewidth=2.2, linestyle="--", color="#e76f51", label="Role mean angle")
+    ax.set_title(f"{company_name}: Windowed Spread Trajectory")
+    ax.set_xlabel("6-month window")
+    ax.set_ylabel("Angle (degrees)")
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
+    ax.legend(frameon=True, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    return fig
+
+
+def render_all_windowed_change_views(frame: pd.DataFrame) -> None:
+    if frame.empty:
+        st.info("No 6-month windows available in the current selection.")
+        return
+    ordered_windows = (
+        frame[["window_index", "window_label"]]
+        .drop_duplicates()
+        .sort_values("window_index")
+        .to_dict(orient="records")
+    )
+    st.markdown("Windowed Change Views")
+    columns = st.columns(2)
+    for index, window_row in enumerate(ordered_windows):
+        window_label = str(window_row["window_label"])
+        with columns[index % 2]:
+            st.markdown(f"**{window_label}**")
+            scatter = windowed_post_vs_role_scatter(frame, window_label)
+            if scatter is not None:
+                st.pyplot(scatter, use_container_width=True)
+            boxplot = windowed_binned_boxplot(frame, window_label)
+            if boxplot is not None:
+                st.pyplot(boxplot, use_container_width=True)
 
 
 def company_drift_asset_paths(company_name: str) -> tuple[str | None, str | None, str | None]:
@@ -1092,7 +1194,7 @@ def render() -> None:
         st.subheader("Company Change Analysis")
         st.caption("This view compares post-level spread, role-level spread, and temporal drift for companies in the selected month window.")
 
-        comparison_frame, drift_frame, drift_monthly_frame, changed_frame = change_analysis_frames(
+        comparison_frame, drift_frame, drift_monthly_frame, changed_frame, windowed_frame = change_analysis_frames(
             filtered_posts, filtered_roles, companies
         )
         if comparison_frame.empty or changed_frame.empty:
@@ -1157,6 +1259,27 @@ def render() -> None:
             c2.metric("Role Mean Angle", f"{float(selected_change_row['role_mean_angle_deg']):.1f}°")
             c3.metric("Spread Gap", f"{float(selected_change_row['spread_gap_deg']):.1f}°")
             c4.metric("Drift Score", f"{float(selected_change_row['drift_score']):.1f}")
+
+            if not windowed_frame.empty:
+                render_all_windowed_change_views(windowed_frame)
+                trajectory = company_windowed_trajectory(windowed_frame, selected_change_company)
+                if trajectory is not None:
+                    st.pyplot(trajectory, use_container_width=True)
+                company_window_rows = (
+                    windowed_frame[windowed_frame["company_name"] == selected_change_company]
+                    .sort_values("window_index")[
+                        [
+                            "window_label",
+                            "post_count",
+                            "role_count",
+                            "post_mean_angle_deg",
+                            "role_mean_angle_deg",
+                            "spread_gap_deg",
+                        ]
+                    ]
+                )
+                if not company_window_rows.empty:
+                    st.dataframe(company_window_rows, use_container_width=True, height=220)
 
             lower_left, lower_right = st.columns([1.2, 1.0])
             with lower_left:

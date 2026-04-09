@@ -40,6 +40,7 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["company_semantic_spread"].exists()
     assert outputs["company_role_semantic_spread"].exists()
     assert outputs["company_post_vs_role_spread"].exists()
+    assert outputs["company_post_vs_role_spread_6m"].exists()
     assert outputs["company_embedding_drift"].exists()
     assert outputs["company_embedding_drift_monthly"].exists()
     assert outputs["changed_companies_ranked"].exists()
@@ -64,6 +65,7 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["company_semantic_spread_visual"].exists()
     assert outputs["company_role_semantic_spread_visual"].exists()
     assert outputs["company_post_vs_role_spread_visual"].exists()
+    assert outputs["company_post_vs_role_spread_6m_visual"].exists()
     assert outputs["changed_companies_ranked_visual"].exists()
     assert outputs["company_variation_histograms_index"].exists()
     assert outputs["company_drift_projection_index"].exists()
@@ -167,6 +169,19 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         "post_mean_angle_deg",
         "role_mean_angle_deg",
     } <= set(changed_rows[0].keys())
+
+    with outputs["company_post_vs_role_spread_6m"].open(encoding="utf-8", newline="") as handle:
+        windowed_rows = list(csv.DictReader(handle))
+    assert windowed_rows
+    assert {
+        "window_index",
+        "window_start_month",
+        "window_end_month",
+        "window_label",
+        "company_name",
+        "post_mean_angle_deg",
+        "role_mean_angle_deg",
+    } <= set(windowed_rows[0].keys())
 
 
 def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:

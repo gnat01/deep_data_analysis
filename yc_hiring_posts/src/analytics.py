@@ -100,6 +100,7 @@ def materialize_core_analytics() -> dict[str, Path]:
     company_semantic_rows = company_semantic_spread(posts, company_name_by_id, month_by_thread_id)
     company_role_rows = company_role_semantic_spread(roles, posts, company_name_by_id, month_by_thread_id)
     post_vs_role_rows = company_post_vs_role_spread(company_semantic_rows, company_role_rows)
+    windowed_post_vs_role_rows = company_post_vs_role_spread_windowed(posts, roles, company_name_by_id, month_by_thread_id)
     company_drift_rows, company_drift_monthly_rows = company_embedding_drift(posts, company_name_by_id, month_by_thread_id)
     changed_company_rows = changed_companies_ranked(post_vs_role_rows, company_drift_rows)
 
@@ -156,6 +157,10 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "company_post_vs_role_spread.csv",
             post_vs_role_rows,
         ),
+        "company_post_vs_role_spread_6m": write_csv(
+            analytics_dir / "company_post_vs_role_spread_6m.csv",
+            windowed_post_vs_role_rows,
+        ),
         "company_embedding_drift": write_csv(
             analytics_dir / "company_embedding_drift.csv",
             company_drift_rows,
@@ -187,6 +192,7 @@ def materialize_core_analytics() -> dict[str, Path]:
         company_semantic_rows=company_semantic_rows,
         company_role_rows=company_role_rows,
         post_vs_role_rows=post_vs_role_rows,
+        windowed_post_vs_role_rows=windowed_post_vs_role_rows,
         company_drift_rows=company_drift_rows,
         company_drift_monthly_rows=company_drift_monthly_rows,
         changed_company_rows=changed_company_rows,
@@ -711,6 +717,63 @@ def company_post_vs_role_spread(
     return sorted(rows, key=lambda row: (-float(row["spread_gap_deg"]), -(float(row["post_mean_angle_deg"]))))
 
 
+def windowed_month_ranges(months: list[str], window_size_months: int = 6) -> list[dict[str, object]]:
+    """Return non-overlapping chronological month windows."""
+
+    ordered_months = sorted(set(months))
+    windows: list[dict[str, object]] = []
+    for index in range(0, len(ordered_months), window_size_months):
+        chunk = ordered_months[index : index + window_size_months]
+        if not chunk:
+            continue
+        windows.append(
+            {
+                "window_index": (index // window_size_months) + 1,
+                "window_start_month": chunk[0],
+                "window_end_month": chunk[-1],
+                "window_label": f"{chunk[0]} to {chunk[-1]}",
+                "months": chunk,
+            }
+        )
+    return windows
+
+
+def company_post_vs_role_spread_windowed(
+    posts: list[dict[str, object]],
+    roles: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+    window_size_months: int = 6,
+    top_n: int = 120,
+) -> list[dict[str, object]]:
+    """Compute company post-vs-role spread over non-overlapping time windows."""
+
+    months = [month_by_thread_id[str(post["thread_id"])] for post in posts if post.get("is_hiring_post")]
+    windows = windowed_month_ranges(months, window_size_months=window_size_months)
+    rows: list[dict[str, object]] = []
+    for window in windows:
+        month_set = set(window["months"])
+        window_posts = [post for post in posts if post.get("is_hiring_post") and month_by_thread_id[str(post["thread_id"])] in month_set]
+        if not window_posts:
+            continue
+        allowed_post_ids = {str(post["post_id"]) for post in window_posts}
+        window_roles = [role for role in roles if str(role["post_id"]) in allowed_post_ids]
+        semantic_rows = company_semantic_spread(window_posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+        role_rows = company_role_semantic_spread(window_roles, window_posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+        comparison_rows = company_post_vs_role_spread(semantic_rows, role_rows)
+        for row in comparison_rows:
+            rows.append(
+                {
+                    "window_index": window["window_index"],
+                    "window_start_month": window["window_start_month"],
+                    "window_end_month": window["window_end_month"],
+                    "window_label": window["window_label"],
+                    **row,
+                }
+            )
+    return sorted(rows, key=lambda row: (int(row["window_index"]), str(row["company_name"] or "")))
+
+
 def company_embedding_drift(
     posts: list[dict[str, object]],
     company_name_by_id: dict[str, str],
@@ -1043,6 +1106,7 @@ def write_analytics_visuals(
     company_semantic_rows: list[dict[str, object]],
     company_role_rows: list[dict[str, object]],
     post_vs_role_rows: list[dict[str, object]],
+    windowed_post_vs_role_rows: list[dict[str, object]],
     company_drift_rows: list[dict[str, object]],
     company_drift_monthly_rows: list[dict[str, object]],
     changed_company_rows: list[dict[str, object]],
@@ -1103,6 +1167,9 @@ def write_analytics_visuals(
         ),
         "company_post_vs_role_spread_visual": plot_company_post_vs_role_spread(
             plt, pd, visuals_dir / "company_post_vs_role_spread.png", post_vs_role_rows
+        ),
+        "company_post_vs_role_spread_6m_visual": plot_company_post_vs_role_spread_windowed(
+            plt, pd, visuals_dir / "company_post_vs_role_spread_6m.png", windowed_post_vs_role_rows
         ),
         "changed_companies_ranked_visual": plot_changed_companies_ranked(
             plt, pd, visuals_dir / "changed_companies_ranked.png", changed_company_rows
@@ -1939,6 +2006,53 @@ def plot_company_post_vs_role_spread(plt, pd, output_path: Path, rows: list[dict
     cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
     cbar.set_label("Spread gap (post - role)")
     ax.grid(alpha=0.22, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_company_post_vs_role_spread_windowed(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot windowed post-vs-role spread across non-overlapping 6-month periods."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("Windowed Post Spread vs Role Spread")
+        ax.text(0.5, 0.5, "No windowed company spread rows yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    ordered_windows = frame[["window_index", "window_label"]].drop_duplicates().sort_values("window_index")
+    window_labels = ordered_windows["window_label"].tolist()
+    ncols = 2
+    nrows = (len(window_labels) + 1) // 2
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(14.5, max(5.6, nrows * 5.2)), constrained_layout=True)
+    axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+    for axis_index, window_label in enumerate(window_labels):
+        ax = axes[axis_index]
+        subset = frame[frame["window_label"] == window_label]
+        scatter = ax.scatter(
+            subset["role_mean_angle_deg"],
+            subset["post_mean_angle_deg"],
+            s=subset["post_count"].astype(float) * 5.0,
+            c=subset["spread_gap_deg"],
+            cmap="coolwarm",
+            alpha=0.8,
+            edgecolors="#1b1a17",
+            linewidths=0.5,
+        )
+        limit = max(subset["role_mean_angle_deg"].max(), subset["post_mean_angle_deg"].max()) + 2.0
+        ax.plot([0, limit], [0, limit], linestyle="--", linewidth=1.0, color="#8d99ae")
+        ax.set_xlim(0, limit)
+        ax.set_ylim(0, limit)
+        ax.set_title(window_label)
+        ax.set_xlabel("Role mean angle")
+        ax.set_ylabel("Post mean angle")
+        ax.grid(alpha=0.2, linestyle="--")
+    for axis_index in range(len(window_labels), len(axes)):
+        axes[axis_index].axis("off")
+    fig.suptitle("Windowed Post Spread vs Role Spread", fontsize=17, fontweight="bold")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return output_path

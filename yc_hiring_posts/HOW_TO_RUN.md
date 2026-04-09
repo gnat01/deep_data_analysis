@@ -372,11 +372,13 @@ It adds:
 ```text
 data/processed/analytics/company_role_semantic_spread.csv
 data/processed/analytics/company_post_vs_role_spread.csv
+data/processed/analytics/company_post_vs_role_spread_6m.csv
 data/processed/analytics/company_embedding_drift.csv
 data/processed/analytics/company_embedding_drift_monthly.csv
 data/processed/analytics/changed_companies_ranked.csv
 data/processed/analytics/visuals/company_role_semantic_spread.png
 data/processed/analytics/visuals/company_post_vs_role_spread.png
+data/processed/analytics/visuals/company_post_vs_role_spread_6m.png
 data/processed/analytics/visuals/changed_companies_ranked.png
 data/processed/analytics/visuals/company_drift_projections/
 ```
@@ -386,6 +388,7 @@ Inspect the outputs with:
 ```bash
 sed -n '1,10p' data/processed/analytics/company_role_semantic_spread.csv
 sed -n '1,10p' data/processed/analytics/company_post_vs_role_spread.csv
+sed -n '1,10p' data/processed/analytics/company_post_vs_role_spread_6m.csv
 sed -n '1,10p' data/processed/analytics/company_embedding_drift.csv
 sed -n '1,10p' data/processed/analytics/changed_companies_ranked.csv
 ls data/processed/analytics/visuals/company_drift_projections
@@ -461,6 +464,7 @@ It then shows:
 - a what-companies-are-building summary
 - a `Company Variation` tab with semantic spread metrics, pairwise-angle histograms, and company-level theme terms
 - a `Change Analysis` tab with post-vs-role spread, changed-company ranking, company drift, and company projection views
+- a windowed 6-month change layer inside `Change Analysis`, including all-company scatter, binned robustness boxplot, and same-company trajectories
 - a searchable post preview table
 
 Static histogram copies are also written locally under:
