@@ -694,6 +694,20 @@ python src/cli.py company-theme-history-postgres \
   --limit 5
 ```
 
+Task 4 routed catalog questions:
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 3
+```
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 43
+```
+
 ## Useful File Locations
 
 Source index:

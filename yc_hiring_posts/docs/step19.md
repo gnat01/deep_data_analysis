@@ -167,3 +167,39 @@ Most likely remaining families:
 - geography-aware helpers only where the data truly supports them
 - tighter summarisation quality for change questions
 - helper composition patterns that can support Step 20 routing
+
+### Task 4: Structured Composition / Routing Layer
+
+Task 4 should add a lightweight orchestration layer over the helper library.
+
+This is **not** the natural-language layer yet.
+
+It should:
+
+- take a structured question target
+- route it to the best current helper
+- use simple compositions where needed
+- return a grounded answer object with:
+  - question metadata
+  - routed helper name
+  - evidence-linked helper output
+
+Current Task 4 command now available:
+
+- `answer-catalog-question-postgres`
+
+This command routes one question from the catalog by `question_id` into the best current helper or composition.
+
+Examples:
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 3
+```
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 43
+```

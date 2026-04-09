@@ -34,6 +34,7 @@ This file is the current handoff note for the YC / HN hiring-posts project.
   - Task 2 is done: first answer-oriented KB helpers
   - question-bank classification layer is built
   - Task 3 is underway with broad helper coverage now live
+  - Task 4 is started with a routed catalog-question command
 
 ## Important Project Files
 
@@ -177,6 +178,18 @@ Purpose:
 - attach likely KB helper
 - drive Task 3 intelligently
 
+#### Task 4: structured routing layer
+
+CLI command:
+
+- `answer-catalog-question-postgres`
+
+Current purpose:
+
+- route one catalog question by `question_id`
+- choose the best current helper or simple composition
+- return a grounded answer object with question metadata and routed helper name
+
 ## What Still Needs To Be Done
 
 ### Step 19 Task 3 Remaining Work
@@ -192,9 +205,15 @@ Most important remaining areas:
 
 ### Step 19 Task 4
 
-Potentially add a composition / routing layer over the helpers, still structured and grounded.
+Add a composition / routing layer over the helpers, still structured and grounded.
 
 This is still before the real natural-language layer.
+
+Current status:
+
+- started
+- first routed catalog command is live
+- next likely improvement is broader question-id routing coverage and cleaner composed outputs
 
 ## Where We Want To Get To
 

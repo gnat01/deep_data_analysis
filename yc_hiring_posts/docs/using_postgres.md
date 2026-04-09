@@ -427,3 +427,17 @@ python src/cli.py company-theme-history-postgres \
   --month-to 2026-04 \
   --limit 5
 ```
+
+Structured routing over catalog questions:
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 3
+```
+
+```bash
+python src/cli.py answer-catalog-question-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question-id 43
+```

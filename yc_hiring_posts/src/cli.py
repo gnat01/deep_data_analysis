@@ -10,6 +10,7 @@ from analytics import materialize_core_analytics
 from companies import normalize_and_write_companies
 from discovery import google_queries_for_entries, google_query_variants
 from fetch import fetch_and_write_thread, fetchable_entries
+from kb_router import answer_catalog_question_postgres
 from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
@@ -385,6 +386,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Classify and annotate the KB question bank into helper families.",
     )
     question_catalog_parser.add_argument("--path", type=Path, default=possible_questions_path())
+
+    routed_question_parser = subparsers.add_parser(
+        "answer-catalog-question-postgres",
+        help="Route one catalog question into the best current PostgreSQL KB helper/composition.",
+    )
+    routed_question_parser.add_argument("--database-url", default=None)
+    routed_question_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    routed_question_parser.add_argument("--question-id", type=int, required=True)
+    routed_question_parser.add_argument("--company", dest="company_name", default=None)
+    routed_question_parser.add_argument("--query", default=None)
+    routed_question_parser.add_argument("--role-family", default=None)
+    routed_question_parser.add_argument("--role-family-a", default=None)
+    routed_question_parser.add_argument("--role-family-b", default=None)
+    routed_question_parser.add_argument("--concept-name", default=None)
+    routed_question_parser.add_argument("--month-from", default=None)
+    routed_question_parser.add_argument("--month-to", default=None)
+    routed_question_parser.add_argument("--year", type=int, default=None)
+    routed_question_parser.add_argument("--mode", default=None)
+    routed_question_parser.add_argument("--limit", type=int, default=10)
+    routed_question_parser.add_argument("--limit-evidence", type=int, default=5)
     return parser
 
 
@@ -789,6 +810,27 @@ def main() -> int:
                 indent=2,
             )
         )
+        return 0
+
+    if args.command == "answer-catalog-question-postgres":
+        result = answer_catalog_question_postgres(
+            question_id=args.question_id,
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            query=args.query,
+            role_family=args.role_family,
+            role_family_a=args.role_family_a,
+            role_family_b=args.role_family_b,
+            concept_name=args.concept_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            year=args.year,
+            mode=args.mode,
+            limit=args.limit,
+            limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     parser.error(f"Unknown command: {args.command}")
