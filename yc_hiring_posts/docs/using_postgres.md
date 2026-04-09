@@ -261,3 +261,43 @@ python src/cli.py company-role-presence-postgres \
   --month-to 2026-01 \
   --limit-evidence 5
 ```
+
+Month summaries:
+
+```bash
+python src/cli.py month-summary-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --month-from 2025-01 \
+  --month-to 2025-12
+```
+
+Role-family timelines:
+
+```bash
+python src/cli.py role-family-timeline-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --role-family ml_ai \
+  --month-from 2024-01 \
+  --month-to 2026-04
+```
+
+Companies for a role query:
+
+```bash
+python src/cli.py companies-for-role-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "platform engineer" \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit-evidence 5
+```
+
+Evidence lookup:
+
+```bash
+python src/cli.py evidence-lookup-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "privacy browser search" \
+  --limit 5 \
+  --summary-only
+```

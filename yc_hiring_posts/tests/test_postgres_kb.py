@@ -9,13 +9,17 @@ if str(SRC_DIR) not in sys.path:
 
 from postgres_kb import (
     DEFAULT_DB_SCHEMA,
+    companies_for_role_postgres,
     TABLE_SPECS,
     company_activity_timeline_postgres,
     company_filters_sql,
     company_role_presence_postgres,
+    evidence_lookup_postgres,
     insert_sql_for_spec,
     month_filters_sql,
+    month_summary_postgres,
     postgres_schema_sql,
+    role_family_timeline_postgres,
     summarize_search_result,
     row_values_for_spec,
 )
@@ -170,3 +174,108 @@ def test_company_helper_functions_return_expected_shapes(monkeypatch) -> None:
     assert presence["match_found"] is True
     assert presence["matched_role_count"] == 2
     assert presence["matched_months"] == ["2025-01"]
+
+
+def test_task3_helper_functions_return_expected_shapes(monkeypatch) -> None:
+    class FakeCursor:
+        def __init__(self) -> None:
+            self.description = []
+            self._rows = []
+
+        def execute(self, sql, params):  # noqa: ANN001
+            if "COUNT(DISTINCT coalesce(p.company_id, p.company_name_observed)) AS company_count" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("hiring_post_count",),
+                    ("company_count",),
+                    ("role_count",),
+                    ("role_family_count",),
+                    ("remote_share_pct",),
+                ]
+                self._rows = [("2025-01", 10, 9, 15, 4, 60.0)]
+            elif "GROUP BY t.thread_month, r.role_family" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("role_family",),
+                    ("role_count",),
+                    ("company_count",),
+                ]
+                self._rows = [("2025-01", "data", 4, 3)]
+            elif "GROUP BY company_name, company_id" in sql:
+                self.description = [
+                    ("company_name",),
+                    ("company_id",),
+                    ("matched_role_count",),
+                    ("matched_month_count",),
+                    ("matched_months",),
+                ]
+                self._rows = [("DuckDuckGo", "company_1", 3, 2, ["2025-01", "2025-02"])]
+            elif "role_title_observed" in sql and "FROM yc_hiring.roles r" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("role_title_observed",),
+                    ("role_family",),
+                    ("role_remote_status",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                ]
+                self._rows = [("2025-01", "DuckDuckGo", "Data Scientist", "data", "remote", "Example post", "https://example.com/post")]
+            else:
+                self.description = [
+                    ("post_id",),
+                    ("thread_id",),
+                    ("thread_month",),
+                    ("thread_title",),
+                    ("company_name",),
+                    ("company_id",),
+                    ("remote_status",),
+                    ("employment_type",),
+                    ("location_text",),
+                    ("compensation_text",),
+                    ("funding",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                    ("text_rank",),
+                ]
+                self._rows = [("post_1", "thread_1", "2025-01", "Ask HN", "DuckDuckGo", "company_1", "remote", "full-time", "Remote", None, None, "Example evidence", "https://example.com/post", None)]
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def fetchone(self):
+            return self._rows[0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    monkeypatch.setattr("postgres_kb.connect_postgres", lambda database_url=None: FakeConnection())
+
+    month_summary = month_summary_postgres()
+    assert month_summary["row_count"] == 1
+    assert month_summary["months"][0]["company_count"] == 9
+
+    role_timeline = role_family_timeline_postgres(role_family="data")
+    assert role_timeline["row_count"] == 1
+    assert role_timeline["rows"][0]["role_family"] == "data"
+
+    companies = companies_for_role_postgres(query="data scientist")
+    assert companies["row_count"] == 1
+    assert companies["companies"][0]["company_name"] == "DuckDuckGo"
+
+    evidence = evidence_lookup_postgres(query="privacy")
+    assert evidence["entity"] == "posts"
+    assert evidence["row_count"] == 1

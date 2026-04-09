@@ -15,11 +15,15 @@ from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
 from postgres_kb import (
     company_activity_timeline_postgres,
+    companies_for_role_postgres,
     company_role_presence_postgres,
     DEFAULT_DB_SCHEMA,
+    evidence_lookup_postgres,
     initialize_postgres_kb,
     inspect_postgres_kb,
     load_postgres_kb,
+    month_summary_postgres,
+    role_family_timeline_postgres,
     search_posts_postgres,
     search_roles_postgres,
     summarize_search_result,
@@ -170,6 +174,50 @@ def build_parser() -> argparse.ArgumentParser:
     company_presence_parser.add_argument("--month-from", default=None)
     company_presence_parser.add_argument("--month-to", default=None)
     company_presence_parser.add_argument("--limit-evidence", type=int, default=10)
+
+    month_summary_parser = subparsers.add_parser(
+        "month-summary-postgres",
+        help="Return per-month hiring summaries from PostgreSQL.",
+    )
+    month_summary_parser.add_argument("--database-url", default=None)
+    month_summary_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    month_summary_parser.add_argument("--month-from", default=None)
+    month_summary_parser.add_argument("--month-to", default=None)
+
+    role_timeline_parser = subparsers.add_parser(
+        "role-family-timeline-postgres",
+        help="Return month-by-month role-family counts from PostgreSQL.",
+    )
+    role_timeline_parser.add_argument("--database-url", default=None)
+    role_timeline_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    role_timeline_parser.add_argument("--role-family", default=None)
+    role_timeline_parser.add_argument("--month-from", default=None)
+    role_timeline_parser.add_argument("--month-to", default=None)
+
+    companies_for_role_parser = subparsers.add_parser(
+        "companies-for-role-postgres",
+        help="Return companies hiring for a role query or role family, with evidence.",
+    )
+    companies_for_role_parser.add_argument("--database-url", default=None)
+    companies_for_role_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    companies_for_role_parser.add_argument("--query", default=None)
+    companies_for_role_parser.add_argument("--role-family", default=None)
+    companies_for_role_parser.add_argument("--remote-status", default=None)
+    companies_for_role_parser.add_argument("--month-from", default=None)
+    companies_for_role_parser.add_argument("--month-to", default=None)
+    companies_for_role_parser.add_argument("--limit-evidence", type=int, default=10)
+
+    evidence_lookup_parser = subparsers.add_parser(
+        "evidence-lookup-postgres",
+        help="Return evidence-linked post rows for an arbitrary query.",
+    )
+    evidence_lookup_parser.add_argument("--database-url", default=None)
+    evidence_lookup_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    evidence_lookup_parser.add_argument("--query", required=True)
+    evidence_lookup_parser.add_argument("--month-from", default=None)
+    evidence_lookup_parser.add_argument("--month-to", default=None)
+    evidence_lookup_parser.add_argument("--limit", type=int, default=10)
+    evidence_lookup_parser.add_argument("--summary-only", action="store_true")
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -368,6 +416,55 @@ def main() -> int:
             month_to=args.month_to,
             limit_evidence=args.limit_evidence,
         )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "month-summary-postgres":
+        result = month_summary_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            month_from=args.month_from,
+            month_to=args.month_to,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "role-family-timeline-postgres":
+        result = role_family_timeline_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            role_family=args.role_family,
+            month_from=args.month_from,
+            month_to=args.month_to,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "companies-for-role-postgres":
+        result = companies_for_role_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            query=args.query,
+            role_family=args.role_family,
+            remote_status=args.remote_status,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "evidence-lookup-postgres":
+        result = evidence_lookup_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            query=args.query,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        if args.summary_only:
+            result = summarize_search_result(result)
         print(json.dumps(result, indent=2, default=str))
         return 0
 

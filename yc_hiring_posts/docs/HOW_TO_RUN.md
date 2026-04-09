@@ -560,6 +560,40 @@ python src/cli.py company-role-presence-postgres \
   --limit-evidence 5
 ```
 
+Task 3 helpers:
+
+```bash
+python src/cli.py month-summary-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --month-from 2025-01 \
+  --month-to 2025-12
+```
+
+```bash
+python src/cli.py role-family-timeline-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --role-family ml_ai \
+  --month-from 2024-01 \
+  --month-to 2026-04
+```
+
+```bash
+python src/cli.py companies-for-role-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "platform engineer" \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit-evidence 5
+```
+
+```bash
+python src/cli.py evidence-lookup-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "privacy browser search" \
+  --limit 5 \
+  --summary-only
+```
+
 ## Useful File Locations
 
 Source index:

@@ -672,3 +672,189 @@ def company_role_presence_postgres(
         "matched_months": summary_row.get("matched_months") or [],
         "evidence_rows": evidence_rows,
     }
+
+
+def month_summary_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+) -> dict[str, object]:
+    """Return per-month aggregate summaries across hiring posts and roles."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            t.thread_month,
+            COUNT(DISTINCT p.post_id) AS hiring_post_count,
+            COUNT(DISTINCT coalesce(p.company_id, p.company_name_observed)) AS company_count,
+            COUNT(DISTINCT r.role_id) AS role_count,
+            COUNT(DISTINCT r.role_family) AS role_family_count,
+            ROUND(100.0 * AVG(CASE WHEN p.remote_status = 'remote' THEN 1 ELSE 0 END), 2) AS remote_share_pct
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.roles r ON r.post_id = p.post_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY t.thread_month
+        ORDER BY t.thread_month
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            months = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "month_summary",
+        "schema": schema,
+        "filters": {"month_from": month_from, "month_to": month_to},
+        "row_count": len(months),
+        "months": months,
+    }
+
+
+def role_family_timeline_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    role_family: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+) -> dict[str, object]:
+    """Return month-by-month role-family counts."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    where_clauses.extend(role_family_filters_sql(role_family, "r.role_family", params))
+    sql = f"""
+        SELECT
+            t.thread_month,
+            r.role_family,
+            COUNT(DISTINCT r.role_id) AS role_count,
+            COUNT(DISTINCT coalesce(r.company_id, p.company_id, p.company_name_observed)) AS company_count
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY t.thread_month, r.role_family
+        ORDER BY t.thread_month, r.role_family
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "role_family_timeline",
+        "schema": schema,
+        "filters": {"role_family": role_family, "month_from": month_from, "month_to": month_to},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def companies_for_role_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str | None = None,
+    role_family: str | None = None,
+    remote_status: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit_evidence: int = 10,
+) -> dict[str, object]:
+    """Return companies that hired for a role query or role family, with evidence."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(role_family_filters_sql(role_family, "r.role_family", params))
+    where_clauses.extend(remote_filters_sql("r.role_remote_status", remote_status, params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    if query:
+        where_clauses.append("r.role_search_tsv @@ websearch_to_tsquery('english', %s)")
+        params.append(query)
+
+    summary_sql = f"""
+        SELECT
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            coalesce(r.company_id, p.company_id) AS company_id,
+            COUNT(DISTINCT r.role_id) AS matched_role_count,
+            COUNT(DISTINCT t.thread_month) AS matched_month_count,
+            array_remove(array_agg(DISTINCT t.thread_month ORDER BY t.thread_month), NULL) AS matched_months
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY
+            coalesce(c.company_name_observed_preferred, p.company_name_observed),
+            coalesce(r.company_id, p.company_id)
+        ORDER BY matched_role_count DESC, matched_month_count DESC, company_name
+    """
+    evidence_params = [*params, limit_evidence]
+    evidence_sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            r.role_title_observed,
+            r.role_family,
+            r.role_remote_status,
+            p.post_text_clean,
+            rp.source_url
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month DESC, company_name, r.role_id
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(summary_sql, params)
+            summary_columns = [desc[0] for desc in cursor.description]
+            companies = [dict(zip(summary_columns, row, strict=False)) for row in cursor.fetchall()]
+            cursor.execute(evidence_sql, evidence_params)
+            evidence_columns = [desc[0] for desc in cursor.description]
+            evidence_rows = [dict(zip(evidence_columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "companies_for_role",
+        "schema": schema,
+        "filters": {
+            "query": query,
+            "role_family": role_family,
+            "remote_status": remote_status,
+            "month_from": month_from,
+            "month_to": month_to,
+            "limit_evidence": limit_evidence,
+        },
+        "row_count": len(companies),
+        "companies": companies,
+        "evidence_rows": evidence_rows,
+    }
+
+
+def evidence_lookup_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 10,
+) -> dict[str, object]:
+    """Return evidence rows across posts for an arbitrary query."""
+
+    return search_posts_postgres(
+        database_url=database_url,
+        schema=schema,
+        query=query,
+        month_from=month_from,
+        month_to=month_to,
+        limit=limit,
+    )

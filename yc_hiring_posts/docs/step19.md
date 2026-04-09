@@ -106,3 +106,21 @@ Minimum helpers:
   - return boolean + matched months + evidence rows
 
 These helpers should stay structured and evidence-linked. Natural-language querying still belongs later.
+
+### Task 3: Broader Helper Coverage
+
+The third task should expand helper coverage across the largest remaining question families.
+
+First helper block:
+
+- month summaries and month rankings
+- role-family timelines
+- companies-for-role lookups
+- evidence lookup helpers
+
+These should stay:
+
+- CLI accessible
+- PostgreSQL backed
+- evidence linked
+- reusable by later orchestration and NL layers
