@@ -426,6 +426,24 @@ def sample_filtered_posts(frame: pd.DataFrame, max_rows: int = 18) -> pd.DataFra
     return sampled.head(max_rows)
 
 
+def sample_company_posts(frame: pd.DataFrame, max_rows: int = 6) -> pd.DataFrame:
+    """Return a deterministic, history-wide sample of company posts."""
+
+    if frame.empty:
+        return frame
+    ordered = frame.sort_values(["thread_month", "post_id"]).reset_index(drop=True)
+    total = len(ordered)
+    if total <= max_rows:
+        return ordered
+    indices = sorted({round(index * (total - 1) / (max_rows - 1)) for index in range(max_rows)})
+    sampled = ordered.iloc[indices].copy()
+    if len(sampled) < max_rows:
+        missing = max_rows - len(sampled)
+        remaining = ordered.drop(index=sampled.index, errors="ignore")
+        sampled = pd.concat([sampled, remaining.head(missing)], ignore_index=False)
+    return sampled.sort_values(["thread_month", "post_id"]).reset_index(drop=True)
+
+
 def build_insights(filtered_posts: pd.DataFrame, filtered_roles: pd.DataFrame) -> list[str]:
     if filtered_posts.empty:
         return ["No hiring posts match the current filters."]
@@ -779,18 +797,21 @@ def render() -> None:
                 st.write("Not enough text variation to extract stable theme terms.")
 
             st.markdown("Sample Company Posts")
-            company_sample = sample_filtered_posts(selected_posts, max_rows=6)[
-                [
-                    "thread_month",
-                    "remote_status",
-                    "employment_type",
-                    "compensation_text",
-                    "funding",
-                    "location_text",
-                    "post_text_clean",
+            company_sample = sample_company_posts(selected_posts, max_rows=6)
+            for _, row in company_sample.iterrows():
+                header_parts = [
+                    str(row.get("thread_month") or ""),
+                    str(row.get("remote_status") or "unspecified"),
+                    str(row.get("employment_type") or "unspecified"),
                 ]
-            ].rename(columns={"post_text_clean": "post_text"})
-            st.dataframe(company_sample, use_container_width=True, height=280)
+                if row.get("compensation_text"):
+                    header_parts.append(str(row.get("compensation_text")))
+                elif row.get("funding"):
+                    header_parts.append(f"funding: {row.get('funding')}")
+                if row.get("location_text"):
+                    header_parts.append(str(row.get("location_text")))
+                st.markdown(" | ".join(part for part in header_parts if part))
+                st.code(str(row.get("post_text_clean") or ""), language="text")
 
             st.markdown("Companies Ordered By Variation In Current Window")
             st.dataframe(
