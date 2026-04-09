@@ -69,3 +69,25 @@ Step 19 should also add:
 - full-text post retrieval
 - role-level retrieval
 - evidence-linked result sets coming out of PostgreSQL
+
+### Task 1: PostgreSQL Retrieval Layer
+
+The first retrieval task should expose CLI-level search over the live PostgreSQL KB for:
+
+- `posts`
+- `roles`
+
+Minimum requirements:
+
+- optional full-text query
+- optional structured filters:
+  - company
+  - role family
+  - remote status
+  - month range
+- evidence-linked rows that include:
+  - thread month
+  - company
+  - source URL
+  - matched post or role text
+- a compact summary mode for quick inspection from the terminal

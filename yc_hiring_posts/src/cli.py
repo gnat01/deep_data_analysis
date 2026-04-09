@@ -13,7 +13,15 @@ from fetch import fetch_and_write_thread, fetchable_entries
 from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
-from postgres_kb import DEFAULT_DB_SCHEMA, initialize_postgres_kb, inspect_postgres_kb, load_postgres_kb
+from postgres_kb import (
+    DEFAULT_DB_SCHEMA,
+    initialize_postgres_kb,
+    inspect_postgres_kb,
+    load_postgres_kb,
+    search_posts_postgres,
+    search_roles_postgres,
+    summarize_search_result,
+)
 from roles import extract_and_write_roles
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 from validate import validation_report_to_dict, validate_many_thread_months, validate_thread_month
@@ -105,6 +113,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_db_parser.add_argument("--database-url", default=None)
     inspect_db_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+
+    search_posts_parser = subparsers.add_parser(
+        "search-postgres-posts",
+        help="Run structured and text retrieval over hiring posts in PostgreSQL.",
+    )
+    search_posts_parser.add_argument("--database-url", default=None)
+    search_posts_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    search_posts_parser.add_argument("--query", default=None)
+    search_posts_parser.add_argument("--company", dest="company_name", default=None)
+    search_posts_parser.add_argument("--role-family", default=None)
+    search_posts_parser.add_argument("--remote-status", default=None)
+    search_posts_parser.add_argument("--month-from", default=None)
+    search_posts_parser.add_argument("--month-to", default=None)
+    search_posts_parser.add_argument("--limit", type=int, default=20)
+    search_posts_parser.add_argument("--summary-only", action="store_true")
+
+    search_roles_parser = subparsers.add_parser(
+        "search-postgres-roles",
+        help="Run structured and text retrieval over role rows in PostgreSQL.",
+    )
+    search_roles_parser.add_argument("--database-url", default=None)
+    search_roles_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    search_roles_parser.add_argument("--query", default=None)
+    search_roles_parser.add_argument("--company", dest="company_name", default=None)
+    search_roles_parser.add_argument("--role-family", default=None)
+    search_roles_parser.add_argument("--remote-status", default=None)
+    search_roles_parser.add_argument("--month-from", default=None)
+    search_roles_parser.add_argument("--month-to", default=None)
+    search_roles_parser.add_argument("--limit", type=int, default=20)
+    search_roles_parser.add_argument("--summary-only", action="store_true")
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -238,6 +276,40 @@ def main() -> int:
     if args.command == "inspect-postgres-kb":
         result = inspect_postgres_kb(database_url=args.database_url, schema=args.schema)
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "search-postgres-posts":
+        result = search_posts_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            query=args.query,
+            company_name=args.company_name,
+            role_family=args.role_family,
+            remote_status=args.remote_status,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        if args.summary_only:
+            result = summarize_search_result(result)
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "search-postgres-roles":
+        result = search_roles_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            query=args.query,
+            company_name=args.company_name,
+            role_family=args.role_family,
+            remote_status=args.remote_status,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        if args.summary_only:
+            result = summarize_search_result(result)
+        print(json.dumps(result, indent=2, default=str))
         return 0
 
     if args.command == "validate-thread-raw":

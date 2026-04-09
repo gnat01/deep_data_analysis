@@ -1,4 +1,4 @@
-"""PostgreSQL-backed knowledge-base initialization and loading."""
+"""PostgreSQL-backed knowledge-base initialization, loading, and retrieval."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from storage import processed_data_dir, project_root
 
@@ -264,3 +265,243 @@ def inspect_postgres_kb(database_url: str | None = None, schema: str = DEFAULT_D
                 cursor.execute(f"SELECT COUNT(*) FROM {schema}.{spec.table_name}")
                 counts[spec.table_name] = int(cursor.fetchone()[0])
     return {"schema": schema, "table_counts": counts}
+
+
+def month_filters_sql(
+    field_sql: str,
+    month_from: str | None,
+    month_to: str | None,
+    params: list[object],
+) -> list[str]:
+    """Build chronological month filter SQL fragments."""
+
+    clauses: list[str] = []
+    if month_from:
+        clauses.append(f"{field_sql} >= %s")
+        params.append(month_from)
+    if month_to:
+        clauses.append(f"{field_sql} <= %s")
+        params.append(month_to)
+    return clauses
+
+
+def remote_filters_sql(
+    field_sql: str,
+    remote_status: str | None,
+    params: list[object],
+) -> list[str]:
+    """Build remote-status SQL fragments."""
+
+    clauses: list[str] = []
+    if remote_status:
+        clauses.append(f"{field_sql} = %s")
+        params.append(remote_status)
+    return clauses
+
+
+def company_filters_sql(
+    company_name: str | None,
+    company_id_field_sql: str,
+    company_name_field_sql: str,
+    params: list[object],
+) -> list[str]:
+    """Build company filter SQL fragments."""
+
+    if not company_name:
+        return []
+    params.extend([company_name, company_name, f"%{company_name}%"])
+    return [
+        "("
+        f"lower({company_id_field_sql}) = lower(%s) "
+        f"OR lower({company_name_field_sql}) = lower(%s) "
+        f"OR {company_name_field_sql} ILIKE %s"
+        ")"
+    ]
+
+
+def role_family_filters_sql(
+    role_family: str | None,
+    field_sql: str,
+    params: list[object],
+) -> list[str]:
+    """Build role-family SQL fragments."""
+
+    if not role_family:
+        return []
+    params.append(role_family)
+    return [f"{field_sql} = %s"]
+
+
+def search_posts_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str | None = None,
+    company_name: str | None = None,
+    role_family: str | None = None,
+    remote_status: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    """Search hiring posts with structured filters and optional full-text ranking."""
+
+    select_params: list[object] = []
+    where_params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(company_filters_sql(company_name, "p.company_id", "coalesce(c.company_name_observed_preferred, p.company_name_observed)", where_params))
+    where_clauses.extend(remote_filters_sql("p.remote_status", remote_status, where_params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, where_params))
+    if role_family:
+        where_clauses.append(
+            f"EXISTS (SELECT 1 FROM {schema}.roles r2 WHERE r2.post_id = p.post_id AND r2.role_family = %s)"
+        )
+        where_params.append(role_family)
+
+    rank_sql = "NULL::double precision AS text_rank"
+    order_sql = "t.thread_month DESC, p.created_at_utc DESC, p.post_id"
+    if query:
+        where_clauses.append("p.post_search_tsv @@ websearch_to_tsquery('english', %s)")
+        where_params.append(query)
+        rank_sql = "ts_rank_cd(p.post_search_tsv, websearch_to_tsquery('english', %s)) AS text_rank"
+        select_params.append(query)
+        order_sql = "text_rank DESC NULLS LAST, t.thread_month DESC, p.created_at_utc DESC, p.post_id"
+
+    params = [*select_params, *where_params, limit]
+    sql = f"""
+        SELECT
+            p.post_id,
+            p.thread_id,
+            t.thread_month,
+            t.thread_title,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            p.remote_status,
+            p.employment_type,
+            p.location_text,
+            p.compensation_text,
+            p.funding,
+            p.post_text_clean,
+            rp.source_url,
+            {rank_sql}
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY {order_sql}
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "posts",
+        "schema": schema,
+        "filters": {
+            "query": query,
+            "company_name": company_name,
+            "role_family": role_family,
+            "remote_status": remote_status,
+            "month_from": month_from,
+            "month_to": month_to,
+            "limit": limit,
+        },
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def search_roles_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str | None = None,
+    company_name: str | None = None,
+    role_family: str | None = None,
+    remote_status: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    """Search role rows with structured filters and optional full-text ranking."""
+
+    select_params: list[object] = []
+    where_params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(company_filters_sql(company_name, "r.company_id", "coalesce(c.company_name_observed_preferred, p.company_name_observed)", where_params))
+    where_clauses.extend(role_family_filters_sql(role_family, "r.role_family", where_params))
+    where_clauses.extend(remote_filters_sql("r.role_remote_status", remote_status, where_params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, where_params))
+
+    rank_sql = "NULL::double precision AS text_rank"
+    order_sql = "t.thread_month DESC, r.role_id"
+    if query:
+        where_clauses.append("r.role_search_tsv @@ websearch_to_tsquery('english', %s)")
+        where_params.append(query)
+        rank_sql = "ts_rank_cd(r.role_search_tsv, websearch_to_tsquery('english', %s)) AS text_rank"
+        select_params.append(query)
+        order_sql = "text_rank DESC NULLS LAST, t.thread_month DESC, r.role_id"
+
+    params = [*select_params, *where_params, limit]
+    sql = f"""
+        SELECT
+            r.role_id,
+            r.post_id,
+            p.thread_id,
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            r.company_id,
+            r.role_title_observed,
+            r.role_title_normalized,
+            r.role_family,
+            r.seniority,
+            r.role_remote_status,
+            r.role_location_text,
+            p.compensation_text,
+            rp.source_url,
+            {rank_sql}
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY {order_sql}
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "roles",
+        "schema": schema,
+        "filters": {
+            "query": query,
+            "company_name": company_name,
+            "role_family": role_family,
+            "remote_status": remote_status,
+            "month_from": month_from,
+            "month_to": month_to,
+            "limit": limit,
+        },
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def summarize_search_result(result: dict[str, Any]) -> dict[str, object]:
+    """Return a compact summary that is easier to scan from the CLI."""
+
+    rows = list(result.get("rows", []))
+    return {
+        "entity": result.get("entity"),
+        "schema": result.get("schema"),
+        "filters": result.get("filters"),
+        "row_count": result.get("row_count"),
+        "sample_rows": rows[: min(5, len(rows))],
+    }

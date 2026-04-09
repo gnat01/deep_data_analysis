@@ -208,3 +208,33 @@ python src/cli.py init-postgres-kb --database-url "postgresql://gn@/yc_hiring_po
 python src/cli.py load-postgres-kb --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp"
 python src/cli.py inspect-postgres-kb --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp"
 ```
+
+## Retrieval From The Project CLI
+
+Search posts with structured filters and optional full-text search:
+
+```bash
+python src/cli.py search-postgres-posts \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "data science" \
+  --company "DuckDuckGo" \
+  --month-from 2024-12 \
+  --month-to 2026-01 \
+  --limit 10 \
+  --summary-only
+```
+
+Search roles:
+
+```bash
+python src/cli.py search-postgres-roles \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "platform engineer" \
+  --remote-status remote \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit 10 \
+  --summary-only
+```
+
+Remove `--summary-only` if you want the full result set.

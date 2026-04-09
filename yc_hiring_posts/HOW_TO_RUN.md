@@ -509,6 +509,34 @@ python -m pytest tests/test_normalize.py
 python -m pytest tests/test_roles.py
 ```
 
+## Step 19 Task 1: PostgreSQL Retrieval
+
+Search hiring posts with structured filters and optional full-text ranking:
+
+```bash
+python src/cli.py search-postgres-posts \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "data science" \
+  --company "DuckDuckGo" \
+  --month-from 2024-12 \
+  --month-to 2026-01 \
+  --limit 10 \
+  --summary-only
+```
+
+Search extracted roles:
+
+```bash
+python src/cli.py search-postgres-roles \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "platform engineer" \
+  --remote-status remote \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit 10 \
+  --summary-only
+```
+
 ## Useful File Locations
 
 Source index:

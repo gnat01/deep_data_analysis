@@ -10,8 +10,11 @@ if str(SRC_DIR) not in sys.path:
 from postgres_kb import (
     DEFAULT_DB_SCHEMA,
     TABLE_SPECS,
+    company_filters_sql,
     insert_sql_for_spec,
+    month_filters_sql,
     postgres_schema_sql,
+    summarize_search_result,
     row_values_for_spec,
 )
 
@@ -53,3 +56,33 @@ def test_row_values_for_spec_serializes_json_payloads() -> None:
     assert json.loads(variants_value) == ["Example Co", "ExampleCo"]
     assert json.loads(misc_value) == {"variant_count": 2}
     assert json.loads(payload_value)["company_id"] == "company_123"
+
+
+def test_month_and_company_filter_helpers_build_expected_clauses() -> None:
+    params: list[object] = []
+    month_clauses = month_filters_sql("t.thread_month", "2024-01", "2024-06", params)
+    company_clauses = company_filters_sql(
+        "Datadog",
+        "p.company_id",
+        "coalesce(c.company_name_observed_preferred, p.company_name_observed)",
+        params,
+    )
+    assert month_clauses == ["t.thread_month >= %s", "t.thread_month <= %s"]
+    assert len(company_clauses) == 1
+    assert "ILIKE %s" in company_clauses[0]
+    assert params == ["2024-01", "2024-06", "Datadog", "Datadog", "%Datadog%"]
+
+
+def test_summarize_search_result_truncates_rows() -> None:
+    result = {
+        "entity": "posts",
+        "schema": "yc_hiring",
+        "filters": {"query": "data science"},
+        "row_count": 7,
+        "rows": [{"post_id": f"post_{index}"} for index in range(7)],
+    }
+    summary = summarize_search_result(result)
+    assert summary["entity"] == "posts"
+    assert summary["row_count"] == 7
+    assert len(summary["sample_rows"]) == 5
+    assert summary["sample_rows"][0]["post_id"] == "post_0"
