@@ -5,10 +5,24 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
 from storage import ensure_processed_dir, processed_data_dir
+
+
+AI_CONCEPT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("agents", (r"\bagentic\b", r"\bagents?\b", r"\bmulti-agent\b", r"\bagent framework\b")),
+    ("mcp", (r"\bmcp\b", r"model context protocol")),
+    ("skills_tooling", (r"\bskills?\b", r"\btool use\b", r"\btooling\b", r"\bfunction calling\b")),
+    ("rag", (r"\brag\b", r"retrieval augmented")),
+    ("evals", (r"\bevals?\b", r"\bevaluation(s)?\b")),
+    ("fine_tuning", (r"fine[- ]?tuning", r"fine[- ]?tun")),
+    ("prompting", (r"\bprompt(s|ing)?\b",)),
+    ("reasoning", (r"\breasoning\b",)),
+    ("inference", (r"\binference\b", r"\bmodel serving\b")),
+]
 
 
 def materialize_core_analytics() -> dict[str, Path]:
@@ -35,6 +49,7 @@ def materialize_core_analytics() -> dict[str, Path]:
     remote_share_rows = remote_status_share_by_month(remote_rows)
     role_family_rows = role_family_trends_by_month(roles, posts, company_name_by_id, month_by_thread_id)
     distinct_role_rows = distinct_roles_by_month(roles, posts, month_by_thread_id)
+    ai_concept_rows = ai_concepts_by_month(posts, roles, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
 
     outputs = {
@@ -62,6 +77,10 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "distinct_roles_by_month.csv",
             distinct_role_rows,
         ),
+        "ai_concepts_by_month": write_csv(
+            analytics_dir / "ai_concepts_by_month.csv",
+            ai_concept_rows,
+        ),
         "recurring_company_hiring_patterns": write_csv(
             analytics_dir / "recurring_company_hiring_patterns.csv",
             recurring_rows,
@@ -75,6 +94,7 @@ def materialize_core_analytics() -> dict[str, Path]:
         remote_share_rows=remote_share_rows,
         role_family_rows=role_family_rows,
         distinct_role_rows=distinct_role_rows,
+        ai_concept_rows=ai_concept_rows,
         recurring_rows=recurring_rows,
     )
     outputs.update(visual_outputs)
@@ -265,6 +285,60 @@ def distinct_roles_by_month(
     return rows
 
 
+def ai_concepts_by_month(
+    posts: list[dict[str, object]],
+    roles: list[dict[str, object]],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Track AI capability concepts over time from post and role text."""
+
+    role_texts_by_post_id: dict[str, list[str]] = defaultdict(list)
+    for role in roles:
+        post_id = str(role["post_id"])
+        fragments = [
+            role.get("role_title_observed"),
+            role.get("role_title_normalized"),
+            role.get("skills_text"),
+            role.get("requirements_text"),
+            role.get("responsibilities_text"),
+        ]
+        role_texts_by_post_id[post_id].extend(fragment for fragment in fragments if isinstance(fragment, str) and fragment.strip())
+
+    month_totals: Counter[str] = Counter()
+    concept_counts: dict[tuple[str, str], int] = defaultdict(int)
+
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        post_id = str(post["post_id"])
+        thread_id = str(post["thread_id"])
+        month = month_by_thread_id[thread_id]
+        month_totals[month] += 1
+        combined_text = "\n".join(
+            [
+                str(post.get("post_text_clean") or ""),
+                *role_texts_by_post_id.get(post_id, []),
+            ]
+        ).lower()
+        for concept_name, patterns in AI_CONCEPT_PATTERNS:
+            if any(re.search(pattern, combined_text, flags=re.IGNORECASE) for pattern in patterns):
+                concept_counts[(month, concept_name)] += 1
+
+    rows = []
+    for (month, concept_name), mentioning_post_count in sorted(concept_counts.items()):
+        total = month_totals[month]
+        rows.append(
+            {
+                "thread_month": month,
+                "concept_name": concept_name,
+                "mentioning_post_count": mentioning_post_count,
+                "month_total_hiring_posts": total,
+                "mention_share_pct": round((mentioning_post_count / total) * 100.0, 2) if total else 0.0,
+            }
+        )
+    return rows
+
+
 def recurring_company_hiring_patterns(
     posts: list[dict[str, object]],
     company_name_by_id: dict[str, str],
@@ -336,6 +410,7 @@ def write_analytics_visuals(
     remote_share_rows: list[dict[str, object]],
     role_family_rows: list[dict[str, object]],
     distinct_role_rows: list[dict[str, object]],
+    ai_concept_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
     """Write a polished visual for each core analytical output."""
@@ -356,11 +431,23 @@ def write_analytics_visuals(
         "remote_status_share_visual": plot_remote_status_share(
             plt, pd, visuals_dir / "remote_status_share_by_month.png", remote_share_rows
         ),
+        "remote_status_share_timeseries_visual": plot_remote_status_share_timeseries(
+            plt, pd, visuals_dir / "remote_status_share_timeseries.png", remote_share_rows
+        ),
         "role_family_trends_visual": plot_role_family_trends(
             plt, pd, sns, visuals_dir / "role_family_trends_by_month.png", role_family_rows
         ),
+        "role_family_timeseries_visual": plot_role_family_timeseries(
+            plt, pd, visuals_dir / "role_family_trends_timeseries.png", role_family_rows
+        ),
         "distinct_roles_visual": plot_distinct_roles(
             plt, pd, visuals_dir / "distinct_roles_by_month.png", distinct_role_rows
+        ),
+        "ai_concepts_visual": plot_ai_concepts(
+            plt, pd, visuals_dir / "ai_concepts_by_month.png", ai_concept_rows
+        ),
+        "ai_concepts_share_visual": plot_ai_concept_share(
+            plt, pd, visuals_dir / "ai_concepts_share_by_month.png", ai_concept_rows
         ),
         "recurring_company_hiring_patterns_visual": plot_recurring_company_patterns(
             plt, pd, visuals_dir / "recurring_company_hiring_patterns.png", recurring_rows
@@ -542,6 +629,46 @@ def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, ob
     return output_path
 
 
+def plot_remote_status_share_timeseries(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot remote-status percentage trends as lines for longer horizons."""
+
+    frame = pd.DataFrame(rows)
+    pivot = frame.pivot_table(
+        index="thread_month",
+        columns="remote_status",
+        values="share_pct",
+        aggfunc="sum",
+        fill_value=0.0,
+    )
+    order = [status for status in ["remote", "hybrid", "onsite", "unspecified"] if status in pivot.columns]
+    colors = {
+        "remote": "#2a9d8f",
+        "hybrid": "#e9c46a",
+        "onsite": "#e76f51",
+        "unspecified": "#8d99ae",
+    }
+    fig, ax = plt.subplots(figsize=(11.5, 6.4), constrained_layout=True)
+    for status in order:
+        ax.plot(
+            pivot.index,
+            pivot[status],
+            linewidth=3,
+            marker="o",
+            markersize=7,
+            color=colors[status],
+            label=status.title(),
+        )
+    ax.set_title("Remote Status Share Over Time")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Share of hiring posts (%)")
+    ax.set_ylim(0, 100)
+    ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
     """Plot the number of companies posting by month as a time series."""
 
@@ -621,6 +748,32 @@ def plot_role_family_trends(plt, pd, sns, output_path: Path, rows: list[dict[str
     return output_path
 
 
+def plot_role_family_timeseries(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the top role families as time series for longer month ranges."""
+
+    frame = pd.DataFrame(rows)
+    top_families = (
+        frame.groupby("role_family", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "role_family"], ascending=[False, True])
+        .head(8)
+    )
+    filtered = frame[frame["role_family"].isin(top_families["role_family"])]
+    pivot = filtered.pivot_table(index="thread_month", columns="role_family", values="role_count", aggfunc="sum", fill_value=0)
+    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#7f5539", "#8d99ae", "#6d597a"]
+    for color, family in zip(palette, pivot.columns, strict=False):
+        ax.plot(pivot.index, pivot[family], linewidth=2.6, marker="o", markersize=6, label=str(family), color=color)
+    ax.set_title("Top Role Families Over Time")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Role count")
+    ax.legend(frameon=True, ncols=2, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
     """Plot the number of distinct roles posted by month as a time series."""
 
@@ -658,6 +811,75 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Count of distinct roles")
     ax.legend(frameon=True, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_ai_concepts(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot absolute AI concept mentions over time."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("AI Hiring Concepts Over Time")
+        ax.text(0.5, 0.5, "No AI concept mentions yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    pivot = frame.pivot_table(index="thread_month", columns="concept_name", values="mentioning_post_count", aggfunc="sum", fill_value=0)
+    concept_order = (
+        frame.groupby("concept_name", as_index=False)["mentioning_post_count"]
+        .sum()
+        .sort_values(["mentioning_post_count", "concept_name"], ascending=[False, True])["concept_name"]
+        .tolist()
+    )
+    pivot = pivot[concept_order]
+    fig, ax = plt.subplots(figsize=(12.8, 7.2), constrained_layout=True)
+    palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#6d597a", "#7f5539", "#8d99ae", "#c08497"]
+    for color, concept in zip(palette, pivot.columns, strict=False):
+        ax.plot(pivot.index, pivot[concept], linewidth=2.8, marker="o", markersize=6, label=str(concept).replace("_", " "))
+    ax.set_title("AI Hiring Concepts Over Time")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Posts mentioning concept")
+    ax.legend(frameon=True, ncols=3, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_ai_concept_share(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot AI concept mention share over time."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("AI Hiring Concept Share Over Time")
+        ax.text(0.5, 0.5, "No AI concept mentions yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    top_concepts = (
+        frame.groupby("concept_name", as_index=False)["mention_share_pct"]
+        .max()
+        .sort_values(["mention_share_pct", "concept_name"], ascending=[False, True])
+        .head(6)["concept_name"]
+        .tolist()
+    )
+    filtered = frame[frame["concept_name"].isin(top_concepts)]
+    pivot = filtered.pivot_table(index="thread_month", columns="concept_name", values="mention_share_pct", aggfunc="sum", fill_value=0)
+    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    palette = ["#264653", "#2a9d8f", "#e9c46a", "#e76f51", "#6d597a", "#457b9d"]
+    for color, concept in zip(palette, pivot.columns, strict=False):
+        ax.plot(pivot.index, pivot[concept], linewidth=3, marker="o", markersize=7, label=str(concept).replace("_", " "))
+    ax.set_title("AI Concept Share Of Hiring Posts")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Share of hiring posts (%)")
+    ax.legend(frameon=True, ncols=2, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)

@@ -33,13 +33,18 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["remote_status_share_by_month"].exists()
     assert outputs["role_family_trends_by_month"].exists()
     assert outputs["distinct_roles_by_month"].exists()
+    assert outputs["ai_concepts_by_month"].exists()
     assert outputs["recurring_company_hiring_patterns"].exists()
     assert outputs["company_posting_counts_visual"].exists()
     assert outputs["company_summary_visual"].exists()
     assert outputs["remote_status_trends_visual"].exists()
     assert outputs["remote_status_share_visual"].exists()
+    assert outputs["remote_status_share_timeseries_visual"].exists()
     assert outputs["role_family_trends_visual"].exists()
+    assert outputs["role_family_timeseries_visual"].exists()
     assert outputs["distinct_roles_visual"].exists()
+    assert outputs["ai_concepts_visual"].exists()
+    assert outputs["ai_concepts_share_visual"].exists()
     assert outputs["recurring_company_hiring_patterns_visual"].exists()
     assert outputs["visual_index"].exists()
     assert outputs["manifest"].exists()
@@ -64,6 +69,11 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert distinct_role_rows
     assert {"thread_month", "distinct_role_count", "distinct_observed_role_count"} <= set(distinct_role_rows[0].keys())
 
+    with outputs["ai_concepts_by_month"].open(encoding="utf-8", newline="") as handle:
+        ai_rows = list(csv.DictReader(handle))
+    assert ai_rows
+    assert {"thread_month", "concept_name", "mentioning_post_count", "mention_share_pct"} <= set(ai_rows[0].keys())
+
 
 def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:
     outputs = materialize_core_analytics()
@@ -72,3 +82,12 @@ def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:
 
     assert rows
     assert any(int(row["active_month_count"]) >= 2 for row in rows)
+
+
+def test_ai_concepts_include_rag_or_agentic_language() -> None:
+    outputs = materialize_core_analytics()
+    with outputs["ai_concepts_by_month"].open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    concept_names = {row["concept_name"] for row in rows}
+    assert {"rag", "agents"} & concept_names
