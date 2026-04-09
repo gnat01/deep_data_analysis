@@ -13,6 +13,7 @@ from fetch import fetch_and_write_thread, fetchable_entries
 from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
+from postgres_kb import DEFAULT_DB_SCHEMA, initialize_postgres_kb, inspect_postgres_kb, load_postgres_kb
 from roles import extract_and_write_roles
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 from validate import validation_report_to_dict, validate_many_thread_months, validate_thread_month
@@ -82,6 +83,28 @@ def build_parser() -> argparse.ArgumentParser:
         "materialize-core-analytics",
         help="Materialize recurring analytical outputs from the processed core tables.",
     )
+
+    init_db_parser = subparsers.add_parser(
+        "init-postgres-kb",
+        help="Initialize the PostgreSQL knowledge-base schema for Step 18.",
+    )
+    init_db_parser.add_argument("--database-url", default=None)
+    init_db_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+
+    load_db_parser = subparsers.add_parser(
+        "load-postgres-kb",
+        help="Load processed V1 core tables into PostgreSQL.",
+    )
+    load_db_parser.add_argument("--database-url", default=None)
+    load_db_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    load_db_parser.add_argument("--batch-size", type=int, default=500)
+
+    inspect_db_parser = subparsers.add_parser(
+        "inspect-postgres-kb",
+        help="Inspect row counts in the PostgreSQL knowledge base.",
+    )
+    inspect_db_parser.add_argument("--database-url", default=None)
+    inspect_db_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -200,6 +223,21 @@ def main() -> int:
     if args.command == "materialize-core-analytics":
         outputs = materialize_core_analytics()
         print(json.dumps({key: str(value) for key, value in outputs.items()}, indent=2))
+        return 0
+
+    if args.command == "init-postgres-kb":
+        result = initialize_postgres_kb(database_url=args.database_url, schema=args.schema)
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "load-postgres-kb":
+        result = load_postgres_kb(database_url=args.database_url, schema=args.schema, batch_size=args.batch_size)
+        print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "inspect-postgres-kb":
+        result = inspect_postgres_kb(database_url=args.database_url, schema=args.schema)
+        print(json.dumps(result, indent=2))
         return 0
 
     if args.command == "validate-thread-raw":

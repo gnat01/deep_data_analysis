@@ -1,6 +1,6 @@
 # How To Run
 
-This document explains exactly how to run **Steps 4 through 17** from the parent project directory:
+This document explains exactly how to run **Steps 4 through 18** from the parent project directory:
 
 ```bash
 cd /Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts
@@ -391,6 +391,51 @@ sed -n '1,10p' data/processed/analytics/changed_companies_ranked.csv
 ls data/processed/analytics/visuals/company_drift_projections
 ```
 
+## Step 18: Initialize And Load The PostgreSQL Knowledge Base
+
+Install dependencies if needed:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Set your database URL:
+
+```bash
+export YC_HIRING_POSTS_DB_URL=postgresql://postgres:postgres@localhost:5432/yc_hiring_posts
+```
+
+Initialize the PostgreSQL schema:
+
+```bash
+PYTHONPATH=src python src/cli.py init-postgres-kb
+```
+
+Load the processed V1 core tables into PostgreSQL:
+
+```bash
+PYTHONPATH=src python src/cli.py load-postgres-kb
+```
+
+Inspect row counts in PostgreSQL:
+
+```bash
+PYTHONPATH=src python src/cli.py inspect-postgres-kb
+```
+
+Optional schema override:
+
+```bash
+PYTHONPATH=src python src/cli.py init-postgres-kb --schema yc_hiring_dev
+PYTHONPATH=src python src/cli.py load-postgres-kb --schema yc_hiring_dev
+```
+
+The SQL schema artifact for this step is:
+
+```text
+sql/postgres_schema.sql
+```
+
 ## Interactive Explorer
 
 Launch the Streamlit app from the project root:
@@ -450,6 +495,7 @@ python -m pytest tests/test_source_index.py tests/test_fetch.py tests/test_parse
 python -m pytest tests/test_companies.py
 python -m pytest tests/test_materialize.py
 python -m pytest tests/test_analytics.py
+python -m pytest tests/test_postgres_kb.py
 ```
 
 Run only one area:

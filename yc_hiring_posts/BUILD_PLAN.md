@@ -244,32 +244,38 @@ This stage should produce:
 - local PNG and GIF artifacts
 - interactive change-analysis views in the Streamlit app
 
-### 18. Add Compensation Parsing
+### 18. Initialize The Knowledge Base Store
 
-Compensation extraction should be phased in after the core structure is stable.
+Stand up PostgreSQL as the first real knowledge-base backing store.
 
-It should:
+This stage should:
 
-- preserve the raw compensation text
-- normalize only clearly stated amounts
-- avoid inventing precision where the source is vague
+- define the PostgreSQL schema for `threads`, `raw_posts`, `posts`, `roles`, and `companies`
+- preserve `misc` and full source payloads in JSONB
+- load the processed V1 core tables into PostgreSQL
+- keep raw source artifacts on disk as the source-of-truth capture layer
 
-### 19. Build Reproducible Reporting
+### 19. Add Structured And Text Retrieval
 
-Create repeatable reporting outputs in CSV, JSON, SQL views, or equivalent artifacts so the dataset can support regular inspection and trend tracking.
+Once PostgreSQL is in place, add retrieval over:
 
-The goal is to answer most early questions from deterministic outputs rather than ad hoc manual inspection.
+- company / month / role-family filters
+- full-text post search
+- role-level search
+- evidence-linked result sets
+- windowed 6-month company-change views that preserve temporal structure in the `Change Analysis` tab
 
-### 20. Add NLP Only After The Structured Pipeline Is Trustworthy
+This should make the corpus meaningfully queryable before natural-language access is added.
 
-Only after the structured data pipeline is stable should the project move into:
+### 20. Add Natural-Language Querying On Top
 
-- skill extraction
-- embeddings
-- semantic retrieval
-- grounded natural-language question answering
+Only after the knowledge base and retrieval layer are stable should the project add:
 
-This prevents the project from jumping into high-variance NLP work before the base data is reliable.
+- natural-language question parsing
+- retrieval-backed answering
+- grounded result synthesis with source links
+
+This keeps the natural-language layer anchored to real stored evidence instead of loose inference.
 
 ## Immediate Next Steps After Approval
 

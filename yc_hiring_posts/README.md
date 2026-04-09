@@ -8,7 +8,7 @@ It is intended to:
 - preserve raw source material
 - normalize job-post data into analysis-friendly tables
 - support trend analysis, repeated-post detection, and compensation comparisons
-- provide a foundation for grounded natural-language querying over the dataset
+- provide a PostgreSQL-backed knowledge-base foundation for grounded natural-language querying over the dataset
 
 ## Directory Layout
 
@@ -23,7 +23,7 @@ It is intended to:
 - `data/processed/`: analysis-ready outputs
 - `app.py`: root-level Streamlit explorer launcher
 - `src/`: flat Python module layout for scraping, parsing, normalization, and analysis
-- `sql/`: analytical queries or warehouse-oriented transformations
+- `sql/`: analytical queries, warehouse-oriented transformations, and PostgreSQL knowledge-base schema
 - `tests/`: tests for parsers, normalizers, and analytical logic
 
 ## Initial Build Priorities
@@ -36,4 +36,4 @@ It is intended to:
 
 ## Current Status
 
-The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, V1 core-table materialization, recurring analytical outputs, upgraded Step 16 visuals, company-level semantic spread analysis, Step 17 company-change analysis, local projection PNG/GIF artifacts, and an interactive Streamlit explorer with dedicated variation and change-analysis tabs.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, V1 core-table materialization, recurring analytical outputs, upgraded Step 16 visuals, Step 17 company-change analysis, local projection PNG/GIF artifacts, an interactive Streamlit explorer with dedicated variation and change-analysis tabs, and a Step 18 PostgreSQL knowledge-base schema plus loader.

@@ -67,13 +67,28 @@ Success criteria:
 - recurring companies can be ranked by measurable change rather than vague impression
 - selected companies can be inspected through both metrics and visuals
 
-## Phase 5: NLP And Query Layer
+## Phase 5: Knowledge Base And Retrieval
 
 Deliverables:
 
-- skill and topic extraction
-- semantic indexing / retrieval layer
-- source-grounded natural-language question answering
+- PostgreSQL schema for the V1 core tables
+- JSONB preservation for `misc` and source payloads
+- knowledge-base loader from processed JSONL tables
+- structured and full-text retrieval over posts and roles
+
+Success criteria:
+
+- the full processed corpus is queryable inside PostgreSQL
+- filters and text search return evidence-linked records
+- the storage design is stable enough to support a later natural-language layer
+
+## Phase 6: Natural-Language Query Layer
+
+Deliverables:
+
+- natural-language query handling
+- retrieval-backed answer synthesis
+- clear source grounding in final answers
 
 Success criteria:
 
