@@ -24,6 +24,7 @@ from postgres_kb import (
     search_roles_postgres,
     summarize_search_result,
 )
+from question_catalog import build_question_catalog, possible_questions_path, write_question_catalog
 from roles import extract_and_write_roles
 from source_index import default_source_index_path, entry_to_dict, load_source_index, verified_entries
 from validate import validation_report_to_dict, validate_many_thread_months, validate_thread_month
@@ -181,6 +182,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate raw artifacts and parsed posts for multiple months.",
     )
     validate_many_parser.add_argument("thread_months", nargs="+", help="Months in YYYY-MM format.")
+
+    question_catalog_parser = subparsers.add_parser(
+        "annotate-possible-questions",
+        help="Classify and annotate the KB question bank into helper families.",
+    )
+    question_catalog_parser.add_argument("--path", type=Path, default=possible_questions_path())
     return parser
 
 
@@ -373,6 +380,21 @@ def main() -> int:
         reports = validate_many_thread_months(args.thread_months)
         print(json.dumps([validation_report_to_dict(report) for report in reports], indent=2))
         return 0 if all(report.checks_passed for report in reports) else 1
+
+    if args.command == "annotate-possible-questions":
+        annotations = build_question_catalog(args.path)
+        outputs = write_question_catalog(annotations)
+        print(
+            json.dumps(
+                {
+                    "question_count": len(annotations),
+                    "markdown_path": str(outputs["markdown_path"]),
+                    "json_path": str(outputs["json_path"]),
+                },
+                indent=2,
+            )
+        )
+        return 0
 
     parser.error(f"Unknown command: {args.command}")
     return 2
