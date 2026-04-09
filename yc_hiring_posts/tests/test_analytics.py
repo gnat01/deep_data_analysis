@@ -34,6 +34,7 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["role_family_trends_by_month"].exists()
     assert outputs["distinct_roles_by_month"].exists()
     assert outputs["ai_concepts_by_month"].exists()
+    assert outputs["ai_concepts_by_role_family"].exists()
     assert outputs["company_building_themes_by_month"].exists()
     assert outputs["recurring_company_hiring_patterns"].exists()
     assert outputs["company_posting_counts_visual"].exists()
@@ -46,6 +47,8 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["distinct_roles_visual"].exists()
     assert outputs["ai_concepts_visual"].exists()
     assert outputs["ai_concepts_share_visual"].exists()
+    assert outputs["ai_concepts_role_family_visual"].exists()
+    assert outputs["ai_concepts_role_family_share_visual"].exists()
     assert outputs["company_building_themes_2023_visual"].exists()
     assert outputs["company_building_themes_2024_visual"].exists()
     assert outputs["company_building_themes_2025_visual"].exists()
@@ -79,6 +82,11 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         ai_rows = list(csv.DictReader(handle))
     assert ai_rows
     assert {"thread_month", "concept_name", "mentioning_post_count", "mention_share_pct"} <= set(ai_rows[0].keys())
+
+    with outputs["ai_concepts_by_role_family"].open(encoding="utf-8", newline="") as handle:
+        ai_role_rows = list(csv.DictReader(handle))
+    assert ai_role_rows
+    assert {"role_family", "concept_name", "role_count", "role_share_pct"} <= set(ai_role_rows[0].keys())
 
     with outputs["company_building_themes_by_month"].open(encoding="utf-8", newline="") as handle:
         theme_rows = list(csv.DictReader(handle))

@@ -9,8 +9,10 @@ if str(SRC_DIR) not in sys.path:
 
 from normalize import (
     NORMALIZED_POST_PARSER_VERSION,
+    extract_compensation_matches,
     normalize_thread_month_to_posts,
     normalized_post_to_dict,
+    parse_compensation_amount,
     write_normalized_posts_jsonl,
 )
 
@@ -101,3 +103,63 @@ def test_closed_post_is_not_hiring() -> None:
     assert target.is_hiring_post is False
     assert target.misc is not None
     assert "closure_or_filled_notice" in target.misc["classification_signals"]
+
+
+def test_compensation_without_currency_symbol_is_extracted() -> None:
+    target = next(
+        post
+        for post in normalize_thread_month_to_posts("2024-03")
+        if post.company_name_observed == "10x Genomics"
+    )
+
+    assert target.compensation_text == "159k-239k + bonus + equity"
+    assert target.compensation_text_accuracy == "high"
+    assert target.funding is None
+    assert target.location_text == "Remote (US)/Onsite (Pleasanton, CA)"
+    assert target.misc is not None
+    assert "159k-239k + bonus + equity" in target.misc["compensation_matches"]
+
+
+def test_pound_denomination_compensation_is_extracted() -> None:
+    target = next(
+        post
+        for post in normalize_thread_month_to_posts("2024-04")
+        if post.company_name_observed == "11x"
+    )
+
+    assert target.compensation_text == "£70,000 - £120,000"
+    assert target.compensation_text_accuracy == "high"
+    assert target.funding is None
+    assert target.location_text == "London, UK | ONSITE"
+    assert target.misc is not None
+    assert "£70,000 - £120,000" in target.misc["compensation_matches"]
+
+
+def test_compensation_matcher_handles_euro_hourly_and_ote_formats() -> None:
+    assert extract_compensation_matches("OTE $150k-$220k + equity") == ["$150k-$220k + equity"]
+    assert extract_compensation_matches("Base salary €80,000 - €100,000 per year") == [
+        "€80,000 - €100,000 per year"
+    ]
+    assert extract_compensation_matches("$80 per hour contract role") == ["$80 per hour"]
+    assert extract_compensation_matches("€60/hour") == ["€60/hour"]
+    assert extract_compensation_matches("Compensation: 180k-240k + bonus") == ["180k-240k + bonus"]
+
+
+def test_parse_compensation_amount_handles_non_dollar_formats() -> None:
+    assert parse_compensation_amount("€80,000 - €100,000 per year") == 80000.0
+    assert parse_compensation_amount("180k-240k + bonus") == 180000.0
+    assert parse_compensation_amount("£70,000 - £120,000") == 70000.0
+    assert parse_compensation_amount("$80 per hour") == 80.0
+
+
+def test_compensation_matcher_handles_more_real_world_formats() -> None:
+    assert extract_compensation_matches("95-130k USD + generous founding equity") == [
+        "95-130k USD + generous founding equity"
+    ]
+    assert extract_compensation_matches("Base salary EUR 80K to 120K") == ["Base salary EUR 80K to 120K"]
+    assert extract_compensation_matches("75,000€ per year with great benefits") == ["75,000€ per year"]
+    assert extract_compensation_matches("170-200K + bonus + equity + benefits") == [
+        "170-200K + bonus + equity + benefits"
+    ]
+    assert extract_compensation_matches("$AUD100-150k (pro rata)") == ["$AUD100-150k"]
+    assert extract_compensation_matches("50 euros/hour") == ["50 euros/hour"]

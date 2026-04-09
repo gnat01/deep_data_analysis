@@ -168,14 +168,14 @@ def apply_month_axis(ax, thread_months: list[str]) -> None:
     positions = list(range(len(thread_months)))
     ax.set_xticks(positions)
     ax.set_xticklabels([pretty_month_label(value) for value in thread_months])
-    ax.tick_params(axis="x", labelrotation=0, labelsize=10, pad=6)
+    ax.tick_params(axis="x", labelrotation=90, labelsize=9, pad=6)
     for position, thread_month in enumerate(thread_months):
         if thread_month.endswith("-01"):
             ax.axvline(position, color="#d9ccb8", linewidth=1.0, alpha=0.45, zorder=0)
 
 
 def line_chart(frame: pd.DataFrame, x_col: str, y_col: str, series_col: str, title: str, ylabel: str):
-    fig, ax = plt.subplots(figsize=(10, 4.6))
+    fig, ax = plt.subplots(figsize=(12.8, 5.4))
     pivot = frame.pivot_table(index=x_col, columns=series_col, values=y_col, aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
@@ -191,7 +191,7 @@ def line_chart(frame: pd.DataFrame, x_col: str, y_col: str, series_col: str, tit
 
 
 def stacked_pct_chart(frame: pd.DataFrame):
-    fig, ax = plt.subplots(figsize=(10, 4.8))
+    fig, ax = plt.subplots(figsize=(12.8, 5.6))
     pivot = frame.pivot_table(index="thread_month", columns="remote_status", values="post_count", aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
@@ -257,7 +257,7 @@ def concept_line_chart(frame: pd.DataFrame, y_col: str, title: str, ylabel: str,
     pivot = filtered.pivot_table(index="thread_month", columns="concept_name", values=y_col, aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(10.2, 4.8))
+    fig, ax = plt.subplots(figsize=(13.2, 5.6))
     for column in pivot.columns:
         ax.plot(positions, pivot[column], marker="o", linewidth=2.6, label=str(column).replace("_", " "))
     ax.set_title(title)
@@ -321,6 +321,83 @@ def theme_year_heatmap(theme_frame: pd.DataFrame, year: str):
     ax.set_title(f"What Companies Are Building ({year})")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Theme")
+    return fig
+
+
+def ai_role_family_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(columns=["role_family", "concept_name", "role_count", "role_share_pct"])
+    counts: dict[tuple[str, str], int] = {}
+    totals: dict[str, int] = {}
+    for _, row in frame.iterrows():
+        role_family = str(row.get("role_family") or "unknown")
+        totals[role_family] = totals.get(role_family, 0) + 1
+        text = "\n".join(
+            [
+                str(row.get("role_title_observed") or ""),
+                str(row.get("role_title_normalized") or ""),
+                str(row.get("skills_text") or ""),
+                str(row.get("requirements_text") or ""),
+                str(row.get("responsibilities_text") or ""),
+            ]
+        ).lower()
+        for concept_name, concept_patterns in AI_CONCEPT_PATTERNS:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in concept_patterns):
+                key = (role_family, concept_name)
+                counts[key] = counts.get(key, 0) + 1
+    rows = []
+    for (role_family, concept_name), count in sorted(counts.items()):
+        total = totals[role_family]
+        rows.append(
+            {
+                "role_family": role_family,
+                "concept_name": concept_name,
+                "role_count": count,
+                "role_share_pct": round((count / total) * 100.0, 2) if total else 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def ai_role_family_heatmap(frame: pd.DataFrame, value_column: str, title: str, colorbar_label: str):
+    if frame.empty:
+        return None
+    top_families = (
+        frame.groupby("role_family", as_index=False)[value_column]
+        .sum()
+        .sort_values([value_column, "role_family"], ascending=[False, True])
+        .head(8)["role_family"]
+        .tolist()
+    )
+    top_concepts = (
+        frame.groupby("concept_name", as_index=False)[value_column]
+        .sum()
+        .sort_values([value_column, "concept_name"], ascending=[False, True])
+        .head(8)["concept_name"]
+        .tolist()
+    )
+    filtered = frame[frame["role_family"].isin(top_families) & frame["concept_name"].isin(top_concepts)]
+    pivot = filtered.pivot_table(index="role_family", columns="concept_name", values=value_column, aggfunc="sum", fill_value=0)
+    fig, ax = plt.subplots(figsize=(13.5, 7.4), constrained_layout=True)
+    heatmap = sns.heatmap(
+        pivot,
+        cmap="YlOrBr" if value_column == "role_count" else "crest",
+        linewidths=0.6,
+        linecolor="#ece4d8",
+        annot=True,
+        fmt="g" if value_column == "role_count" else ".1f",
+        annot_kws={"fontsize": 9, "fontweight": "bold"},
+        cbar_kws={"label": colorbar_label},
+        ax=ax,
+    )
+    threshold = float(pivot.to_numpy().max()) * 0.45 if not pivot.empty else 0.0
+    for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+        text.set_color("#fffaf0" if float(value) >= threshold else "#102a43")
+    ax.set_title(title)
+    ax.set_xlabel("AI concept")
+    ax.set_ylabel("Role family")
+    ax.tick_params(axis="x", labelrotation=0, labelsize=10)
+    ax.tick_params(axis="y", labelsize=10)
     return fig
 
 
@@ -444,13 +521,14 @@ def render() -> None:
     )
     remote_trend = month_counts(filtered_posts.assign(remote_status=filtered_posts["remote_status"].fillna("unspecified")), "remote_status", "post_count")
     ai_trend = concept_rows(filtered_posts, AI_CONCEPT_PATTERNS, "mentioning_post_count")
+    ai_role_family_trend = ai_role_family_rows(filtered_roles)
     building_theme_summary = theme_summary(filtered_posts)
     building_theme_rows = theme_rows(filtered_posts)
 
     chart_left, chart_right = st.columns(2)
     with chart_left:
         if not post_trend.empty:
-            fig, ax = plt.subplots(figsize=(9, 4.5))
+            fig, ax = plt.subplots(figsize=(12.6, 5.4))
             months = post_trend["thread_month"].tolist()
             positions = list(range(len(months)))
             ax.plot(positions, post_trend["post_count"], marker="o", linewidth=3, color="#183a37")
@@ -493,9 +571,34 @@ def render() -> None:
         else:
             st.info("No AI concept share trend available for the current filters.")
 
+    st.subheader("AI Concepts By Role Family")
+    role_ai_left, role_ai_right = st.columns(2)
+    with role_ai_left:
+        chart = ai_role_family_heatmap(
+            ai_role_family_trend,
+            "role_count",
+            "AI Concepts By Role Family",
+            "Role count",
+        )
+        if chart is not None:
+            st.pyplot(chart, use_container_width=True)
+        else:
+            st.info("No AI role-family concept view available for the current filters.")
+    with role_ai_right:
+        chart = ai_role_family_heatmap(
+            ai_role_family_trend,
+            "role_share_pct",
+            "AI Concept Share By Role Family",
+            "Share of role family (%)",
+        )
+        if chart is not None:
+            st.pyplot(chart, use_container_width=True)
+        else:
+            st.info("No AI role-family share view available for the current filters.")
+
     st.subheader("What Companies Are Building")
     if not building_theme_summary.empty:
-        fig, ax = plt.subplots(figsize=(10.2, 4.8))
+        fig, ax = plt.subplots(figsize=(13.2, 5.6))
         top = building_theme_summary.head(8).iloc[::-1]
         ax.barh(
             top["building_theme"].str.replace("_", " ", regex=False),

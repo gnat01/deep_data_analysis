@@ -75,8 +75,40 @@ REMOTE_PATTERNS: tuple[tuple[re.Pattern[str], RemoteStatus], ...] = (
     (re.compile(r"\bremote\b", re.IGNORECASE), "remote"),
     (re.compile(r"\bonsite\b|\bon-site\b|\bin person\b", re.IGNORECASE), "onsite"),
 )
-COMPENSATION_RE = re.compile(
-    r"(\$[\d,]+(?:\.\d+)?(?:\s?[kKmM])?(?:\s*-\s*\$?[\d,]+(?:\.\d+)?(?:\s?[kKmM])?)?(?:\s*/\s*(?:year|yr|hour|hr|month|mo))?)",
+COMPENSATION_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"(\$\(\d[\d,]*(?:\.\d+)?\s*(?:-|to)\s*\d[\d,]*(?:\.\d+)?\)\s?[kKmM]?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"((?:(?:OTE|Base salary)\s+)?"
+        r"(?=[^|.;\n]*(?:[$£€]|AUD|USD|EUR|GBP|euros?|\b\d[\d,]*(?:\.\d+)?\s?[kKmM]\b|(?:/|per)\s*(?:year|yr|annum|annual|hour|hr|month|mo)|\bto\b))"
+        r"(?:(?:[$£€]|AUD|USD|EUR|GBP|\$AUD)\s?)?"
+        r"\d[\d,]*(?:\.\d+)?(?:\s?[kKmM])?(?:€)?(?:\+)?"
+        r"(?:\s*(?:-|to)\s*(?:(?:[$£€]|AUD|USD|EUR|GBP|\$AUD)\s?)?\d[\d,]*(?:\.\d+)?(?:\s?[kKmM])?(?:€)?(?:\+)?)?"
+        r"(?:\s*(?:USD|EUR|AUD|GBP|euros?))?"
+        r"(?:\s*(?:/|per)\s*(?:year|yr|annum|annual|hour|hr|month|mo))?"
+        r"(?:\s*\+\s*(?:[A-Za-z]+\s+){0,2}(?:bonus|equity|commission|benefits?|rsus?))*)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"((?:\b\d[\d,]*(?:\.\d+)?\s*(?:euros?)\s*(?:/|per)\s*(?:year|yr|annum|annual|hour|hr|month|mo)"
+        r"(?:\s*\+\s*(?:[A-Za-z]+\s+){0,2}(?:bonus|equity|commission|benefits?|rsus?))*))",
+        re.IGNORECASE,
+    ),
+)
+QUALITATIVE_COMPENSATION_RE = re.compile(
+    r"\b("
+    r"competitive (?:salary|comp(?:ensation)?|pay)"
+    r"|salary \+ equity"
+    r"|base \+ equity"
+    r"|equity-only"
+    r"|pay range"
+    r")\b",
+    re.IGNORECASE,
+)
+COMPENSATION_CONTEXT_RE = re.compile(
+    r"\b(salary|comp(?:ensation)?|base(?: salary)?|ote|equity|bonus|commission|rsus?|pay range|competitive pay|competitive salary|per hour|hourly)\b",
     re.IGNORECASE,
 )
 VISA_RE = re.compile(
@@ -291,7 +323,26 @@ def extract_remote_status(raw_text: str, header_segments: list[str]) -> tuple[Re
 def extract_compensation_matches(raw_text: str) -> list[str]:
     """Extract raw compensation-like spans conservatively."""
 
-    return list(dict.fromkeys(match.group(1).strip() for match in COMPENSATION_RE.finditer(raw_text)))
+    matches: list[str] = []
+    for pattern in COMPENSATION_PATTERNS:
+        for match in pattern.finditer(raw_text):
+            if looks_like_non_compensation_metric_context(raw_text, match.start(), match.end()):
+                continue
+            value = clean_text(match.group(1).strip())
+            value = re.sub(r"^OTE\s+", "", value, flags=re.IGNORECASE)
+            value = re.sub(r"^Base salary\s+(?=[£$€])", "", value, flags=re.IGNORECASE)
+            if value:
+                matches.append(value)
+    deduped = list(dict.fromkeys(matches))
+    filtered: list[str] = []
+    for value in sorted(deduped, key=len, reverse=True):
+        lowered = value.lower()
+        if not looks_like_numeric_compensation(value):
+            continue
+        if any(lowered in existing.lower() for existing in filtered):
+            continue
+        filtered.append(value)
+    return filtered
 
 
 def assess_compensation_text_accuracy(compensation_text: str | None) -> CompensationTextAccuracy | None:
@@ -355,16 +406,48 @@ def compensation_accuracy_reason(
 def parse_compensation_amount(compensation_text: str) -> float | None:
     """Parse the leading amount from a compensation-like span into a numeric value."""
 
-    match = re.search(r"\$([\d,]+(?:\.\d+)?)(?:\s?([kKmM]))?", compensation_text)
+    match = re.search(
+        r"(?:[$£€]|AUD|USD|EUR|GBP|euros?)?\s?\(?([\d,]+(?:\.\d+)?)\)?(?:\s?([kKmM]))?",
+        compensation_text,
+        re.IGNORECASE,
+    )
     if not match:
         return None
-    amount = float(match.group(1).replace(",", ""))
+    raw_amount = match.group(1)
+    if not raw_amount:
+        return None
+    amount = float(raw_amount.replace(",", ""))
     suffix = (match.group(2) or "").lower()
     if suffix == "k":
         amount *= 1_000
     elif suffix == "m":
         amount *= 1_000_000
     return amount
+
+
+def looks_like_numeric_compensation(value: str) -> bool:
+    """Return true when a matched span has strong numeric compensation signals."""
+
+    lowered = value.lower()
+    has_currency = any(token in value for token in ("$", "£", "€")) or bool(
+        re.search(r"\b(?:usd|eur|aud|gbp|euros?)\b", lowered)
+    )
+    has_suffix = bool(re.search(r"\b\d[\d,]*(?:\.\d+)?\s?[km]\b", lowered))
+    has_unit = bool(re.search(r"(?:/|per)\s*(?:year|yr|annum|annual|hour|hr|month|mo)\b", lowered))
+    has_range = bool(re.search(r"\d[\d,]*(?:\.\d+)?\s*(?:-|to)\s*\d", lowered))
+    return has_currency or has_suffix or has_unit or has_range
+
+
+def looks_like_non_compensation_metric_context(raw_text: str, start: int, end: int) -> bool:
+    """Return true when a numeric span appears to describe product/company metrics instead of pay."""
+
+    window = raw_text[max(0, start - 24) : min(len(raw_text), end + 36)].lower()
+    return bool(
+        re.search(
+            r"\b(people|users?|customers?|employees?|visitors?|downloads?|installs?|subscribers?|companies|businesses|teams?)\b",
+            window,
+        )
+    )
 
 
 def extract_visa_text(raw_text: str, header_segments: list[str]) -> str | None:
@@ -442,4 +525,4 @@ def is_url_like(value: str) -> bool:
 def is_compensation_like(value: str) -> bool:
     """Return true when a segment looks like compensation text."""
 
-    return bool(COMPENSATION_RE.search(value))
+    return bool(extract_compensation_matches(value) or QUALITATIVE_COMPENSATION_RE.search(value) or COMPENSATION_CONTEXT_RE.search(value))

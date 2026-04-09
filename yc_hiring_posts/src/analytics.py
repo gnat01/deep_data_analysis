@@ -94,6 +94,7 @@ def materialize_core_analytics() -> dict[str, Path]:
     role_family_rows = role_family_trends_by_month(roles, posts, company_name_by_id, month_by_thread_id)
     distinct_role_rows = distinct_roles_by_month(roles, posts, month_by_thread_id)
     ai_concept_rows = ai_concepts_by_month(posts, roles, month_by_thread_id)
+    ai_concept_role_family_rows = ai_concepts_by_role_family(roles, month_by_thread_id)
     product_theme_rows = company_building_themes_by_month(posts, company_name_by_id, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
 
@@ -126,6 +127,10 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "ai_concepts_by_month.csv",
             ai_concept_rows,
         ),
+        "ai_concepts_by_role_family": write_csv(
+            analytics_dir / "ai_concepts_by_role_family.csv",
+            ai_concept_role_family_rows,
+        ),
         "company_building_themes_by_month": write_csv(
             analytics_dir / "company_building_themes_by_month.csv",
             product_theme_rows,
@@ -144,6 +149,7 @@ def materialize_core_analytics() -> dict[str, Path]:
         role_family_rows=role_family_rows,
         distinct_role_rows=distinct_role_rows,
         ai_concept_rows=ai_concept_rows,
+        ai_concept_role_family_rows=ai_concept_role_family_rows,
         product_theme_rows=product_theme_rows,
         recurring_rows=recurring_rows,
     )
@@ -389,6 +395,44 @@ def ai_concepts_by_month(
     return rows
 
 
+def ai_concepts_by_role_family(
+    roles: list[dict[str, object]],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Track AI concepts within extracted role-family text."""
+
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    role_family_totals: Counter[str] = Counter()
+    for role in roles:
+        role_family = str(role.get("role_family") or "unknown")
+        role_family_totals[role_family] += 1
+        text = "\n".join(
+            [
+                str(role.get("role_title_observed") or ""),
+                str(role.get("role_title_normalized") or ""),
+                str(role.get("skills_text") or ""),
+                str(role.get("requirements_text") or ""),
+                str(role.get("responsibilities_text") or ""),
+            ]
+        ).lower()
+        for concept_name, patterns in AI_CONCEPT_PATTERNS:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
+                counts[(role_family, concept_name)] += 1
+    rows = []
+    for (role_family, concept_name), role_count in sorted(counts.items()):
+        total = role_family_totals[role_family]
+        rows.append(
+            {
+                "role_family": role_family,
+                "concept_name": concept_name,
+                "role_count": role_count,
+                "role_family_total_roles": total,
+                "role_share_pct": round((role_count / total) * 100.0, 2) if total else 0.0,
+            }
+        )
+    return rows
+
+
 def company_building_themes_by_month(
     posts: list[dict[str, object]],
     company_name_by_id: dict[str, str],
@@ -502,6 +546,7 @@ def write_analytics_visuals(
     role_family_rows: list[dict[str, object]],
     distinct_role_rows: list[dict[str, object]],
     ai_concept_rows: list[dict[str, object]],
+    ai_concept_role_family_rows: list[dict[str, object]],
     product_theme_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
@@ -540,6 +585,12 @@ def write_analytics_visuals(
         ),
         "ai_concepts_share_visual": plot_ai_concept_share(
             plt, pd, visuals_dir / "ai_concepts_share_by_month.png", ai_concept_rows
+        ),
+        "ai_concepts_role_family_visual": plot_ai_concepts_by_role_family(
+            plt, pd, sns, visuals_dir / "ai_concepts_by_role_family.png", ai_concept_role_family_rows
+        ),
+        "ai_concepts_role_family_share_visual": plot_ai_concepts_by_role_family_share(
+            plt, pd, sns, visuals_dir / "ai_concepts_by_role_family_share.png", ai_concept_role_family_rows
         ),
         "company_building_themes_timeseries_visual": plot_company_building_theme_timeseries(
             plt, pd, visuals_dir / "company_building_themes_timeseries.png", product_theme_rows
@@ -599,7 +650,7 @@ def apply_month_axis(ax, thread_months: list[str]) -> None:
     positions = list(range(len(thread_months)))
     ax.set_xticks(positions)
     ax.set_xticklabels(pretty_month_labels(thread_months))
-    ax.tick_params(axis="x", labelrotation=0, labelsize=10, pad=6)
+    ax.tick_params(axis="x", labelrotation=90, labelsize=9, pad=6)
     for position, thread_month in enumerate(thread_months):
         if thread_month.endswith("-01"):
             ax.axvline(position, color="#d9ccb8", linewidth=1.0, alpha=0.45, zorder=0)
@@ -712,7 +763,7 @@ def plot_remote_status_trends(plt, pd, output_path: Path, rows: list[dict[str, o
     }
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(11, 7), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(13.2, 7.2), constrained_layout=True)
     bottom = None
     for status in order:
         values = pivot[status].tolist()
@@ -752,7 +803,7 @@ def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, ob
     }
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(11.5, 7), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(13.2, 7.2), constrained_layout=True)
     bottom = None
     for status in order:
         values = pivot[status].tolist()
@@ -796,7 +847,7 @@ def plot_remote_status_share_timeseries(plt, pd, output_path: Path, rows: list[d
         "onsite": "#e76f51",
         "unspecified": "#8d99ae",
     }
-    fig, ax = plt.subplots(figsize=(11.5, 6.4), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(13.2, 6.8), constrained_layout=True)
     for status in order:
         ax.plot(
             positions,
@@ -825,7 +876,7 @@ def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object
     frame = pd.DataFrame(rows).sort_values("thread_month")
     months = frame["thread_month"].tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(13.2, 6.8), constrained_layout=True)
     ax.plot(
         positions,
         frame["company_count"],
@@ -916,7 +967,7 @@ def plot_role_family_timeseries(plt, pd, output_path: Path, rows: list[dict[str,
     pivot = filtered.pivot_table(index="thread_month", columns="role_family", values="role_count", aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(14.2, 7.4), constrained_layout=True)
     palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#7f5539", "#8d99ae", "#6d597a"]
     for color, family in zip(palette, pivot.columns, strict=False):
         ax.plot(positions, pivot[family], linewidth=2.6, marker="o", markersize=6, label=str(family), color=color)
@@ -937,7 +988,7 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
     frame = pd.DataFrame(rows).sort_values("thread_month")
     months = frame["thread_month"].tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(13.2, 6.8), constrained_layout=True)
     ax.plot(
         positions,
         frame["distinct_role_count"],
@@ -999,7 +1050,7 @@ def plot_ai_concepts(plt, pd, output_path: Path, rows: list[dict[str, object]]) 
     pivot = pivot[concept_order]
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(12.8, 7.2), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(14.2, 7.6), constrained_layout=True)
     palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#6d597a", "#7f5539", "#8d99ae", "#c08497"]
     for color, concept in zip(palette, pivot.columns, strict=False):
         ax.plot(positions, pivot[concept], linewidth=2.8, marker="o", markersize=6, label=str(concept).replace("_", " "))
@@ -1037,7 +1088,7 @@ def plot_ai_concept_share(plt, pd, output_path: Path, rows: list[dict[str, objec
     pivot = filtered.pivot_table(index="thread_month", columns="concept_name", values="mention_share_pct", aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(14.2, 7.4), constrained_layout=True)
     palette = ["#264653", "#2a9d8f", "#e9c46a", "#e76f51", "#6d597a", "#457b9d"]
     for color, concept in zip(palette, pivot.columns, strict=False):
         ax.plot(positions, pivot[concept], linewidth=3, marker="o", markersize=7, label=str(concept).replace("_", " "))
@@ -1047,6 +1098,112 @@ def plot_ai_concept_share(plt, pd, output_path: Path, rows: list[dict[str, objec
     apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=2, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_ai_concepts_by_role_family(plt, pd, sns, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot AI concept counts by role family."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("AI Concepts By Role Family")
+        ax.text(0.5, 0.5, "No AI role-family concept signals yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    top_families = (
+        frame.groupby("role_family", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "role_family"], ascending=[False, True])
+        .head(8)["role_family"]
+        .tolist()
+    )
+    top_concepts = (
+        frame.groupby("concept_name", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "concept_name"], ascending=[False, True])
+        .head(8)["concept_name"]
+        .tolist()
+    )
+    filtered = frame[frame["role_family"].isin(top_families) & frame["concept_name"].isin(top_concepts)]
+    pivot = filtered.pivot_table(index="role_family", columns="concept_name", values="role_count", aggfunc="sum", fill_value=0)
+    fig, ax = plt.subplots(figsize=(14.5, 8.2), constrained_layout=True)
+    heatmap = sns.heatmap(
+        pivot,
+        cmap="YlOrBr",
+        linewidths=0.6,
+        linecolor="#ece4d8",
+        annot=True,
+        fmt="g",
+        annot_kws={"fontsize": 9, "fontweight": "bold"},
+        cbar_kws={"label": "Role count"},
+        ax=ax,
+    )
+    threshold = float(pivot.to_numpy().max()) * 0.45 if not pivot.empty else 0.0
+    for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+        text.set_color("#fffaf0" if float(value) >= threshold else "#102a43")
+    ax.set_title("AI Concepts By Role Family")
+    ax.set_xlabel("AI concept")
+    ax.set_ylabel("Role family")
+    ax.tick_params(axis="x", labelrotation=0, labelsize=10)
+    ax.tick_params(axis="y", labelsize=10)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_ai_concepts_by_role_family_share(plt, pd, sns, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot AI concept share within each role family."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("AI Concept Share By Role Family")
+        ax.text(0.5, 0.5, "No AI role-family concept signals yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    top_families = (
+        frame.groupby("role_family", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "role_family"], ascending=[False, True])
+        .head(8)["role_family"]
+        .tolist()
+    )
+    top_concepts = (
+        frame.groupby("concept_name", as_index=False)["role_count"]
+        .sum()
+        .sort_values(["role_count", "concept_name"], ascending=[False, True])
+        .head(8)["concept_name"]
+        .tolist()
+    )
+    filtered = frame[frame["role_family"].isin(top_families) & frame["concept_name"].isin(top_concepts)]
+    pivot = filtered.pivot_table(index="role_family", columns="concept_name", values="role_share_pct", aggfunc="sum", fill_value=0.0)
+    fig, ax = plt.subplots(figsize=(14.5, 8.2), constrained_layout=True)
+    heatmap = sns.heatmap(
+        pivot,
+        cmap="crest",
+        linewidths=0.6,
+        linecolor="#ece4d8",
+        annot=True,
+        fmt=".1f",
+        annot_kws={"fontsize": 9, "fontweight": "bold"},
+        cbar_kws={"label": "Share of role family (%)"},
+        ax=ax,
+    )
+    threshold = float(pivot.to_numpy().max()) * 0.45 if not pivot.empty else 0.0
+    for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+        text.set_color("#fffaf0" if float(value) >= threshold else "#102a43")
+    ax.set_title("AI Concept Share By Role Family")
+    ax.set_xlabel("AI concept")
+    ax.set_ylabel("Role family")
+    ax.tick_params(axis="x", labelrotation=0, labelsize=10)
+    ax.tick_params(axis="y", labelsize=10)
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return output_path
@@ -1138,7 +1295,7 @@ def plot_company_building_theme_timeseries(plt, pd, output_path: Path, rows: lis
     pivot = filtered.pivot_table(index="thread_month", columns="building_theme", values="company_count", aggfunc="sum", fill_value=0)
     months = pivot.index.tolist()
     positions = list(range(len(months)))
-    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(14.2, 7.4), constrained_layout=True)
     palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#6d597a"]
     for color, theme in zip(palette, pivot.columns, strict=False):
         ax.plot(positions, pivot[theme], linewidth=2.8, marker="o", markersize=6, label=str(theme).replace("_", " "), color=color)
