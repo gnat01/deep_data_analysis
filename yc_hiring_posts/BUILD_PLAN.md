@@ -244,6 +244,15 @@ This stage should produce:
 - local PNG and GIF artifacts
 - interactive change-analysis views in the Streamlit app
 
+For Step 17, `drift_score` should be documented explicitly as:
+
+- `drift_score = mean(angle_from_first_deg) + mean(angle_from_previous_deg)`
+
+This is a heuristic summary of both:
+
+- long-run drift away from the first active month
+- month-to-month drift across active months
+
 ### 18. Initialize The Knowledge Base Store
 
 Stand up PostgreSQL as the first real knowledge-base backing store.

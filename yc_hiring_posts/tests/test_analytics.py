@@ -136,7 +136,6 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         "company_name",
         "post_mean_angle_deg",
         "role_mean_angle_deg",
-        "spread_gap_deg",
         "spread_ratio",
     } <= set(spread_comparison_rows[0].keys())
 

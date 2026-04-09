@@ -68,6 +68,72 @@ def with_company_display(posts: pd.DataFrame, roles: pd.DataFrame, companies: pd
     return posts, roles
 
 
+def clean_company_options(posts: pd.DataFrame, companies: pd.DataFrame) -> list[str]:
+    """Return a clean company picker built from resolved company identities."""
+
+    active_company_ids = {
+        str(value)
+        for value in posts.loc[posts["is_hiring_post"] == True, "company_id"].dropna().astype(str).tolist()
+    }
+    filtered = companies[companies["company_id"].astype(str).isin(active_company_ids)].copy()
+    options = (
+        filtered["company_name_observed_preferred"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+    options = options[options != ""]
+    options = options[options.map(looks_like_company_name)]
+    return sorted(options.unique().tolist())
+
+
+def looks_like_company_name(value: str) -> bool:
+    """Return whether a label is sane enough to present as a company choice."""
+
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    bad_prefixes = (
+        "remote",
+        "full-time",
+        "part-time",
+        "onsite",
+        "hybrid",
+        "posted ",
+        "looking for ",
+        "hello",
+        "at ",
+        "for those",
+        "anyone ",
+        "can't ",
+        "curious ",
+        "despite ",
+        "edit ",
+        "> ",
+        "@",
+        "(",
+        "*",
+        "#",
+        "/",
+        '"',
+    )
+    if any(lowered.startswith(prefix) for prefix in bad_prefixes):
+        return False
+    if "|" in text or len(text) > 90 or text.count(" ") > 10 or "http" in lowered or "[" in text or "]" in text:
+        return False
+    if not re.search(r"[A-Za-z]", text):
+        return False
+    return True
+
+
+def render_figure(fig) -> None:
+    """Render and close a Matplotlib figure in Streamlit."""
+
+    st.pyplot(fig, width="stretch")
+    plt.close(fig)
+
+
 def with_thread_month(posts: pd.DataFrame, roles: pd.DataFrame, threads: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     month_by_thread_id = dict(zip(threads["thread_id"].astype(str), threads["thread_month"].astype(str), strict=False))
     posts = posts.copy()
@@ -583,7 +649,6 @@ def change_analysis_frames(
                 "role_count",
                 "post_mean_angle_deg",
                 "role_mean_angle_deg",
-                "spread_gap_deg",
                 "spread_ratio",
             ]
         )
@@ -624,7 +689,6 @@ def change_analysis_frames(
                 "role_count",
                 "post_mean_angle_deg",
                 "role_mean_angle_deg",
-                "spread_gap_deg",
                 "spread_ratio",
             ]
         )
@@ -637,7 +701,7 @@ def change_analysis_frames(
     semantic_rows = company_semantic_spread(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     role_spread_rows = company_role_semantic_spread(role_rows, post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     comparison_rows = company_post_vs_role_spread(semantic_rows, role_spread_rows)
-    windowed_rows = company_post_vs_role_spread_windowed(post_rows, role_rows, company_name_by_id, month_by_thread_id, window_size_months=6, top_n=100)
+    windowed_rows = company_post_vs_role_spread_windowed(post_rows, role_rows, company_name_by_id, month_by_thread_id, window_size_months=6, top_n=None)
     drift_rows, drift_monthly_rows = company_embedding_drift(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
     changed_rows = changed_companies_ranked(comparison_rows, drift_rows)
     return (
@@ -657,8 +721,7 @@ def post_vs_role_scatter(frame: pd.DataFrame):
         frame["role_mean_angle_deg"],
         frame["post_mean_angle_deg"],
         s=frame["post_count"].astype(float) * 7.0,
-        c=frame["spread_gap_deg"],
-        cmap="coolwarm",
+        color="#457b9d",
         alpha=0.82,
         edgecolors="#1b1a17",
         linewidths=0.6,
@@ -670,8 +733,6 @@ def post_vs_role_scatter(frame: pd.DataFrame):
     ax.set_title("Post Spread vs Role Spread")
     ax.set_xlabel("Role mean angle (degrees)")
     ax.set_ylabel("Post mean angle (degrees)")
-    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
-    cbar.set_label("Spread gap (post - role)")
     ax.grid(alpha=0.22, linestyle="--")
     return fig
 
@@ -804,12 +865,11 @@ def windowed_post_vs_role_scatter(frame: pd.DataFrame, selected_window: str):
     if subset.empty:
         return None
     fig, ax = plt.subplots(figsize=(11.8, 7.8))
-    scatter = ax.scatter(
+    ax.scatter(
         subset["role_mean_angle_deg"],
         subset["post_mean_angle_deg"],
         s=subset["post_count"].astype(float) * 7.0,
-        c=subset["spread_gap_deg"],
-        cmap="coolwarm",
+        color="#457b9d",
         alpha=0.82,
         edgecolors="#1b1a17",
         linewidths=0.6,
@@ -836,6 +896,36 @@ def windowed_binned_boxplot(frame: pd.DataFrame, selected_window: str):
     return binned_post_vs_role_boxplot(subset)
 
 
+def short_month_label(value: str) -> str:
+    parts = str(value or "").split("-")
+    if len(parts) != 2:
+        return str(value or "")
+    year, month = parts
+    return f"{month}/{year[2:]}"
+
+
+def short_window_label(start_month: str, end_month: str) -> str:
+    return f"{short_month_label(start_month)} - {short_month_label(end_month)}"
+
+
+def spread_duplicate_points(x_values: list[float], y_values: list[float], radius: float = 0.8) -> tuple[list[float], list[float]]:
+    if not x_values or not y_values:
+        return x_values, y_values
+    grouped: dict[tuple[float, float], list[int]] = {}
+    for idx, point in enumerate(zip(x_values, y_values)):
+        grouped.setdefault(point, []).append(idx)
+    x_out = list(x_values)
+    y_out = list(y_values)
+    for indexes in grouped.values():
+        if len(indexes) == 1:
+            continue
+        for offset_idx, row_idx in enumerate(indexes):
+            angle = (2 * np.pi * offset_idx) / len(indexes)
+            x_out[row_idx] = x_values[row_idx] + radius * np.cos(angle)
+            y_out[row_idx] = y_values[row_idx] + radius * np.sin(angle)
+    return x_out, y_out
+
+
 def company_windowed_trajectory(frame: pd.DataFrame, company_name: str):
     if frame.empty:
         return None
@@ -857,6 +947,64 @@ def company_windowed_trajectory(frame: pd.DataFrame, company_name: str):
     return fig
 
 
+def company_windowed_scatter(frame: pd.DataFrame, company_name: str):
+    if frame.empty:
+        return None
+    subset = frame[frame["company_name"] == company_name].sort_values("window_index").copy()
+    if subset.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(9.4, 7.2))
+    color_positions = np.linspace(0.15, 0.9, len(subset))
+    colors = plt.cm.viridis(color_positions)
+    x_values = subset["post_mean_angle_deg"].astype(float).tolist()
+    y_values = subset["role_mean_angle_deg"].astype(float).tolist()
+    x_plot, y_plot = spread_duplicate_points(x_values, y_values, radius=0.8)
+    ax.scatter(
+        x_plot,
+        y_plot,
+        s=subset["post_count"].astype(float) * 12.0,
+        c=colors,
+        alpha=0.9,
+        edgecolors="#1b1a17",
+        linewidths=0.7,
+    )
+    for idx, (_, row) in enumerate(subset.iterrows()):
+        ax.annotate(
+            f"W{int(row['window_index'])}",
+            (x_plot[idx], y_plot[idx]),
+            xytext=(6, 6),
+            textcoords="offset points",
+            fontsize=9,
+            weight="bold",
+            color="#1b1a17",
+            bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.75},
+        )
+    ax.set_title(f"{company_name}: Windowed Post vs Role Spread")
+    ax.set_xlabel("Post mean angle (degrees)")
+    ax.set_ylabel("Role mean angle (degrees)")
+    ax.grid(alpha=0.22, linestyle="--")
+    return fig
+
+
+def company_window_color_key(frame: pd.DataFrame, company_name: str) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(columns=["window_code", "window_range"])
+    subset = frame[frame["company_name"] == company_name].sort_values("window_index").copy()
+    if subset.empty:
+        return pd.DataFrame(columns=["window_code", "window_range"])
+    rows = []
+    for _, row in subset.iterrows():
+        rows.append(
+            {
+                "window_code": f"W{int(row['window_index'])}",
+                "window_range": short_window_label(str(row["window_start_month"]), str(row["window_end_month"])),
+                "post_mean_angle_deg": round(float(row["post_mean_angle_deg"]), 2),
+                "role_mean_angle_deg": round(float(row["role_mean_angle_deg"]), 2),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def render_all_windowed_change_views(frame: pd.DataFrame) -> None:
     if frame.empty:
         st.info("No 6-month windows available in the current selection.")
@@ -875,10 +1023,10 @@ def render_all_windowed_change_views(frame: pd.DataFrame) -> None:
             st.markdown(f"**{window_label}**")
             scatter = windowed_post_vs_role_scatter(frame, window_label)
             if scatter is not None:
-                st.pyplot(scatter, use_container_width=True)
+                render_figure(scatter)
             boxplot = windowed_binned_boxplot(frame, window_label)
             if boxplot is not None:
-                st.pyplot(boxplot, use_container_width=True)
+                render_figure(boxplot)
 
 
 def company_drift_asset_paths(company_name: str) -> tuple[str | None, str | None, str | None]:
@@ -910,7 +1058,7 @@ def render() -> None:
         unsafe_allow_html=True,
     )
 
-    company_options = sorted(posts.loc[posts["is_hiring_post"] == True, "company_display"].dropna().astype(str).unique().tolist())
+    company_options = clean_company_options(posts, companies)
     role_family_options = sorted(roles["role_family"].dropna().astype(str).unique().tolist())
     remote_options = ["remote", "hybrid", "onsite", "unspecified"]
     month_options = sorted(posts.loc[posts["is_hiring_post"] == True, "thread_month"].dropna().astype(str).unique().tolist())
@@ -944,7 +1092,8 @@ def render() -> None:
         selected_remote_statuses,
     )
 
-    tabs = st.tabs(["Slice Explorer", "Company Variation", "Change Analysis"])
+    tabs = st.tabs(["Slice Explorer", "Company Variation", "Change Analysis", "Company Change Deep Dive"])
+    clean_company_set = set(company_options)
 
     with tabs[0]:
         c1, c2, c3, c4 = st.columns(4)
@@ -981,21 +1130,18 @@ def render() -> None:
                 ax.set_ylabel("Post count")
                 apply_month_axis(ax, months)
                 ax.grid(alpha=0.25, linestyle="--")
-                st.pyplot(fig, use_container_width=True)
+                render_figure(fig)
             else:
                 st.info("No hiring posts to plot for the current filters.")
         with chart_right:
             if not remote_trend.empty:
-                st.pyplot(stacked_pct_chart(remote_trend), use_container_width=True)
+                render_figure(stacked_pct_chart(remote_trend))
             else:
                 st.info("No remote-status trend available for the current filters.")
 
         st.subheader("Role Family Time Series")
         if not role_trend.empty:
-            st.pyplot(
-                line_chart(role_trend, "thread_month", "role_count", "role_family", "Role Families Over Time", "Role count"),
-                use_container_width=True,
-            )
+            render_figure(line_chart(role_trend, "thread_month", "role_count", "role_family", "Role Families Over Time", "Role count"))
         else:
             st.info("No role-family trend available for the current filters.")
 
@@ -1004,13 +1150,13 @@ def render() -> None:
         with ai_left:
             ai_count_chart = concept_line_chart(ai_trend, "mentioning_post_count", "AI Concepts Over Time", "Posts mentioning concept")
             if ai_count_chart is not None:
-                st.pyplot(ai_count_chart, use_container_width=True)
+                render_figure(ai_count_chart)
             else:
                 st.info("No AI concept trend available for the current filters.")
         with ai_right:
             ai_share_chart = concept_line_chart(ai_trend, "share_pct", "AI Concept Share Over Time", "Share of selected posts (%)")
             if ai_share_chart is not None:
-                st.pyplot(ai_share_chart, use_container_width=True)
+                render_figure(ai_share_chart)
             else:
                 st.info("No AI concept share trend available for the current filters.")
 
@@ -1024,7 +1170,7 @@ def render() -> None:
                 "Role count",
             )
             if chart is not None:
-                st.pyplot(chart, use_container_width=True)
+                render_figure(chart)
             else:
                 st.info("No AI role-family concept view available for the current filters.")
         with role_ai_right:
@@ -1035,7 +1181,7 @@ def render() -> None:
                 "Share of role family (%)",
             )
             if chart is not None:
-                st.pyplot(chart, use_container_width=True)
+                render_figure(chart)
             else:
                 st.info("No AI role-family share view available for the current filters.")
 
@@ -1052,7 +1198,7 @@ def render() -> None:
             ax.set_title("Top Product Themes In Current Slice")
             ax.set_xlabel("Hiring posts matching theme")
             ax.set_ylabel("Theme")
-            st.pyplot(fig, use_container_width=True)
+            render_figure(fig)
 
             year_values = sorted({value.split("-")[0] for value in filtered_posts["thread_month"].dropna().astype(str).tolist()})
             if year_values:
@@ -1063,7 +1209,7 @@ def render() -> None:
                     if chart is None:
                         continue
                     with columns[index % 2]:
-                        st.pyplot(chart, use_container_width=True)
+                        render_figure(chart)
         else:
             st.info("No product-theme signals available for the current filters.")
 
@@ -1079,7 +1225,7 @@ def render() -> None:
                 "location_text",
             ]
         ].rename(columns={"company_display": "company_name"})
-        st.dataframe(preview, use_container_width=True, height=320)
+        st.dataframe(preview, width="stretch", height=320)
 
     with tabs[1]:
         window_posts = posts[(posts["is_hiring_post"] == True) & (posts["thread_month"] >= start_month) & (posts["thread_month"] <= end_month)].copy()
@@ -1090,6 +1236,7 @@ def render() -> None:
         if variation_rows.empty:
             st.info("No company-level variation view is available for the selected month window.")
         else:
+            variation_rows = variation_rows[variation_rows["company_display"].isin(clean_company_set)].copy()
             company_options_variation = variation_rows.sort_values(
                 ["mean_pairwise_angle_deg", "post_count", "company_display"], ascending=[True, False, True]
             )["company_display"].tolist()
@@ -1113,7 +1260,7 @@ def render() -> None:
             with left:
                 hist = company_angle_histogram(selected_posts)
                 if hist is not None:
-                    st.pyplot(hist, use_container_width=True)
+                    render_figure(hist)
                 else:
                     st.info("Need at least two posts from the company in the selected month window to build a pairwise-angle histogram.")
             with right:
@@ -1128,7 +1275,7 @@ def render() -> None:
                     ax.set_ylabel("Post count")
                     apply_month_axis(ax, months)
                     ax.grid(alpha=0.25, linestyle="--")
-                    st.pyplot(fig, use_container_width=True)
+                    render_figure(fig)
 
             st.markdown("Central Themes")
             if terms:
@@ -1172,7 +1319,7 @@ def render() -> None:
                         "p90_pairwise_angle_deg": "p90_angle_deg",
                     }
                 ).head(20),
-                use_container_width=True,
+                width="stretch",
                 height=320,
             )
 
@@ -1188,7 +1335,7 @@ def render() -> None:
                         "post_text_clean",
                     ]
                 ].rename(columns={"post_text_clean": "post_text"})
-                st.dataframe(company_preview, use_container_width=True, height=320)
+                st.dataframe(company_preview, width="stretch", height=320)
 
     with tabs[2]:
         st.subheader("Company Change Analysis")
@@ -1210,16 +1357,16 @@ def render() -> None:
             with top_left:
                 scatter = post_vs_role_scatter(comparison_frame)
                 if scatter is not None:
-                    st.pyplot(scatter, use_container_width=True)
+                    render_figure(scatter)
             with top_right:
                 ranking_chart = changed_companies_chart(changed_frame)
                 if ranking_chart is not None:
-                    st.pyplot(ranking_chart, use_container_width=True)
+                    render_figure(ranking_chart)
 
             st.markdown("Binned Comparison")
             binned_boxplot = binned_post_vs_role_boxplot(comparison_frame)
             if binned_boxplot is not None:
-                st.pyplot(binned_boxplot, use_container_width=True)
+                render_figure(binned_boxplot)
 
             st.markdown("Changed Companies Ranking")
             st.dataframe(
@@ -1230,15 +1377,27 @@ def render() -> None:
                         "role_count",
                         "post_mean_angle_deg",
                         "role_mean_angle_deg",
-                        "spread_gap_deg",
                         "drift_score",
                         "changed_score",
                     ]
                 ].head(20),
-                use_container_width=True,
+                width="stretch",
                 height=320,
             )
 
+    with tabs[3]:
+        st.subheader("Company Change Deep Dive")
+        st.caption("Inspect one company across non-overlapping time windows and compare its post-spread vs role-spread path through time.")
+
+        comparison_frame, drift_frame, drift_monthly_frame, changed_frame, windowed_frame = change_analysis_frames(
+            filtered_posts, filtered_roles, companies
+        )
+        if comparison_frame.empty or changed_frame.empty:
+            st.info("Need enough recurring companies with role coverage in the selected month window to build the company deep dive.")
+        else:
+            changed_frame = changed_frame[changed_frame["company_name"].isin(clean_company_set)].copy()
+            windowed_frame = windowed_frame[windowed_frame["company_name"].isin(clean_company_set)].copy()
+            drift_monthly_frame = drift_monthly_frame[drift_monthly_frame["company_name"].isin(clean_company_set)].copy()
             company_options_change = (
                 changed_frame.sort_values(["changed_score", "company_name"], ascending=[True, True])["company_name"]
                 .dropna()
@@ -1257,41 +1416,55 @@ def render() -> None:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Post Mean Angle", f"{float(selected_change_row['post_mean_angle_deg']):.1f}°")
             c2.metric("Role Mean Angle", f"{float(selected_change_row['role_mean_angle_deg']):.1f}°")
-            c3.metric("Spread Gap", f"{float(selected_change_row['spread_gap_deg']):.1f}°")
-            c4.metric("Drift Score", f"{float(selected_change_row['drift_score']):.1f}")
+            c3.metric("Drift Score", f"{float(selected_change_row['drift_score']):.1f}")
+            c4.metric("Changed Score", f"{float(selected_change_row['changed_score']):.1f}")
 
             if not windowed_frame.empty:
-                render_all_windowed_change_views(windowed_frame)
-                trajectory = company_windowed_trajectory(windowed_frame, selected_change_company)
-                if trajectory is not None:
-                    st.pyplot(trajectory, use_container_width=True)
+                company_scatter = company_windowed_scatter(windowed_frame, selected_change_company)
+                if company_scatter is not None:
+                    render_figure(company_scatter)
+                st.caption("Point labels use window codes. See the key below for the exact month range for each window in the current selection.")
+                company_key = company_window_color_key(windowed_frame, selected_change_company)
+                if not company_key.empty:
+                    st.dataframe(company_key, width="stretch", height=180)
                 company_window_rows = (
                     windowed_frame[windowed_frame["company_name"] == selected_change_company]
                     .sort_values("window_index")[
                         [
+                            "window_index",
                             "window_label",
                             "post_count",
                             "role_count",
                             "post_mean_angle_deg",
                             "role_mean_angle_deg",
-                            "spread_gap_deg",
                         ]
                     ]
                 )
                 if not company_window_rows.empty:
-                    st.dataframe(company_window_rows, use_container_width=True, height=220)
+                    company_window_rows["window_code"] = company_window_rows["window_index"].apply(lambda value: f"W{int(value)}")
+                    company_window_rows = company_window_rows[
+                        [
+                            "window_code",
+                            "window_label",
+                            "post_count",
+                            "role_count",
+                            "post_mean_angle_deg",
+                            "role_mean_angle_deg",
+                        ]
+                    ]
+                    st.dataframe(company_window_rows, width="stretch", height=220)
 
             lower_left, lower_right = st.columns([1.2, 1.0])
             with lower_left:
                 drift_fig = company_drift_line(selected_monthly, selected_change_company)
                 if drift_fig is not None:
-                    st.pyplot(drift_fig, use_container_width=True)
+                    render_figure(drift_fig)
                 else:
                     st.info("Need at least two active months in the current window to show drift.")
             with lower_right:
                 projection_fig = company_projection_chart(selected_company_posts)
                 if projection_fig is not None:
-                    st.pyplot(projection_fig, use_container_width=True)
+                    render_figure(projection_fig)
                 else:
                     st.info("Need at least three posts in the current window to show a projection.")
 

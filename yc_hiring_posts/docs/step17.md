@@ -34,7 +34,6 @@ Fields should include:
 - `role_median_angle_deg`
 - `post_p90_angle_deg`
 - `role_p90_angle_deg`
-- `spread_gap_deg`
 - `spread_ratio`
 
 Target outputs:
@@ -60,6 +59,20 @@ This should include:
 - within-month spread
 - total drift score per company
 
+Current `drift_score` definition:
+
+- `drift_score = mean(angle_from_first_deg) + mean(angle_from_previous_deg)`
+
+where:
+
+- `angle_from_first_deg` is the centroid angle for a month against the first active month
+- `angle_from_previous_deg` is the centroid angle for a month against the immediately previous active month
+
+This is a heuristic summary, not a canonical statistic. It is meant to combine:
+
+- long-run drift away from the initial hiring narrative
+- step-to-step drift as the company evolves over time
+
 Target outputs:
 
 - `company_embedding_drift.csv`
@@ -78,7 +91,6 @@ Rank companies by overall change, combining:
 
 - post spread
 - role spread
-- post-vs-role spread gap
 - temporal embedding drift
 
 Target outputs:

@@ -708,13 +708,12 @@ def company_post_vs_role_spread(
                 "role_median_angle_deg": role_row.get("role_median_angle_deg"),
                 "post_p90_angle_deg": post_row.get("p90_pairwise_angle_deg"),
                 "role_p90_angle_deg": role_row.get("role_p90_angle_deg"),
-                "spread_gap_deg": round(post_mean - role_mean, 2),
                 "spread_ratio": round(post_mean / role_mean, 3) if role_mean else None,
                 "post_exact_reuse_share": post_row.get("exact_reuse_share"),
                 "role_exact_reuse_share": role_row.get("role_exact_reuse_share"),
             }
         )
-    return sorted(rows, key=lambda row: (-float(row["spread_gap_deg"]), -(float(row["post_mean_angle_deg"]))))
+    return sorted(rows, key=lambda row: (-float(row["post_mean_angle_deg"]), -(float(row["role_mean_angle_deg"]))))
 
 
 def windowed_month_ranges(months: list[str], window_size_months: int = 6) -> list[dict[str, object]]:
@@ -744,7 +743,7 @@ def company_post_vs_role_spread_windowed(
     company_name_by_id: dict[str, str],
     month_by_thread_id: dict[str, str],
     window_size_months: int = 6,
-    top_n: int = 120,
+    top_n: int | None = None,
 ) -> list[dict[str, object]]:
     """Compute company post-vs-role spread over non-overlapping time windows."""
 
@@ -758,8 +757,19 @@ def company_post_vs_role_spread_windowed(
             continue
         allowed_post_ids = {str(post["post_id"]) for post in window_posts}
         window_roles = [role for role in roles if str(role["post_id"]) in allowed_post_ids]
-        semantic_rows = company_semantic_spread(window_posts, company_name_by_id, month_by_thread_id, top_n=top_n)
-        role_rows = company_role_semantic_spread(window_roles, window_posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+        semantic_rows = company_semantic_spread(
+            window_posts,
+            company_name_by_id,
+            month_by_thread_id,
+            top_n=top_n or 100000,
+        )
+        role_rows = company_role_semantic_spread(
+            window_roles,
+            window_posts,
+            company_name_by_id,
+            month_by_thread_id,
+            top_n=top_n or 100000,
+        )
         comparison_rows = company_post_vs_role_spread(semantic_rows, role_rows)
         for row in comparison_rows:
             rows.append(
@@ -945,10 +955,9 @@ def changed_companies_ranked(
         if drift is None:
             continue
         changed_score = (
-            float(row["post_mean_angle_deg"]) * 0.35
+            float(row["post_mean_angle_deg"]) * 0.45
             + float(row["role_mean_angle_deg"]) * 0.25
-            + max(float(row["spread_gap_deg"]), 0.0) * 0.15
-            + float(drift["drift_score"]) * 0.25
+            + float(drift["drift_score"]) * 0.30
         )
         rows.append(
             {
@@ -959,7 +968,6 @@ def changed_companies_ranked(
                 "role_count": row.get("role_count"),
                 "post_mean_angle_deg": row.get("post_mean_angle_deg"),
                 "role_mean_angle_deg": row.get("role_mean_angle_deg"),
-                "spread_gap_deg": row.get("spread_gap_deg"),
                 "drift_score": drift.get("drift_score"),
                 "changed_score": round(changed_score, 2),
             }
@@ -1986,12 +1994,11 @@ def plot_company_post_vs_role_spread(plt, pd, output_path: Path, rows: list[dict
 
     frame = pd.DataFrame(rows)
     fig, ax = plt.subplots(figsize=(11.8, 8.4), constrained_layout=True)
-    scatter = ax.scatter(
+    ax.scatter(
         frame["role_mean_angle_deg"],
         frame["post_mean_angle_deg"],
         s=frame["post_count"].astype(float) * 6.0,
-        c=frame["spread_gap_deg"],
-        cmap="coolwarm",
+        color="#457b9d",
         alpha=0.82,
         edgecolors="#1b1a17",
         linewidths=0.6,
@@ -2003,8 +2010,6 @@ def plot_company_post_vs_role_spread(plt, pd, output_path: Path, rows: list[dict
     ax.set_title("Post Spread vs Role Spread")
     ax.set_xlabel("Role mean angle (degrees)")
     ax.set_ylabel("Post mean angle (degrees)")
-    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
-    cbar.set_label("Spread gap (post - role)")
     ax.grid(alpha=0.22, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -2032,12 +2037,11 @@ def plot_company_post_vs_role_spread_windowed(plt, pd, output_path: Path, rows: 
     for axis_index, window_label in enumerate(window_labels):
         ax = axes[axis_index]
         subset = frame[frame["window_label"] == window_label]
-        scatter = ax.scatter(
+        ax.scatter(
             subset["role_mean_angle_deg"],
             subset["post_mean_angle_deg"],
             s=subset["post_count"].astype(float) * 5.0,
-            c=subset["spread_gap_deg"],
-            cmap="coolwarm",
+            color="#457b9d",
             alpha=0.8,
             edgecolors="#1b1a17",
             linewidths=0.5,

@@ -20,7 +20,6 @@ That means:
 
 - one `post_mean_angle_deg` per company per 6-month window
 - one `role_mean_angle_deg` per company per 6-month window
-- one `spread_gap_deg` per company per 6-month window
 
 ### Why This Matters
 
