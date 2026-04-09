@@ -324,6 +324,29 @@ def theme_year_heatmap(theme_frame: pd.DataFrame, year: str):
     return fig
 
 
+def sample_filtered_posts(frame: pd.DataFrame, max_rows: int = 18) -> pd.DataFrame:
+    """Return a balanced sample of filtered posts across months."""
+
+    if frame.empty:
+        return frame
+    months = sorted(frame["thread_month"].dropna().astype(str).unique().tolist())
+    if not months:
+        return frame.head(0)
+    per_month = max(1, max_rows // len(months))
+    sampled_parts = []
+    for month in months:
+        month_frame = frame[frame["thread_month"] == month].sort_values(["company_display", "location_text", "compensation_text"], na_position="last")
+        sampled_parts.append(month_frame.head(per_month))
+    sampled = pd.concat(sampled_parts, ignore_index=True)
+    if len(sampled) < max_rows:
+        used_post_ids = set(sampled["post_id"].astype(str))
+        remainder = frame[~frame["post_id"].astype(str).isin(used_post_ids)].sort_values(
+            ["thread_month", "company_display", "location_text"], na_position="last"
+        )
+        sampled = pd.concat([sampled, remainder.head(max_rows - len(sampled))], ignore_index=True)
+    return sampled.head(max_rows)
+
+
 def build_insights(filtered_posts: pd.DataFrame, filtered_roles: pd.DataFrame) -> list[str]:
     if filtered_posts.empty:
         return ["No hiring posts match the current filters."]
@@ -498,8 +521,8 @@ def render() -> None:
     else:
         st.info("No product-theme signals available for the current filters.")
 
-    st.subheader("Filtered Posts")
-    preview = filtered_posts[
+    st.subheader("Sample Of Filtered Posts")
+    preview = sample_filtered_posts(filtered_posts)[
         [
             "thread_month",
             "company_display",
