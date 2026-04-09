@@ -13,7 +13,9 @@ from materialize import available_materialization_months, materialize_v1_core_ta
 def test_available_materialization_months_returns_fully_processed_months() -> None:
     months = available_materialization_months()
 
-    assert months == ["2024-05", "2024-11", "2025-03", "2025-08", "2026-01"]
+    assert months[0] == "2023-01"
+    assert months[-1] == "2026-04"
+    assert len(months) == 40
 
 
 def test_materialize_v1_core_tables_writes_outputs(tmp_path: Path, monkeypatch) -> None:

@@ -208,9 +208,15 @@ def is_deleted_fragment(fragment: str, commtext_html: str, raw_text: str) -> boo
 
     if "[deleted]" in fragment:
         return True
+    if "[flagged]" in fragment:
+        return True
     if commtext_html.strip() == "[deleted]":
         return True
+    if commtext_html.strip() == "[flagged]":
+        return True
     if raw_text.strip() == "[deleted]":
+        return True
+    if raw_text.strip() == "[flagged]":
         return True
     return False
 

@@ -13,6 +13,10 @@ from storage import ensure_processed_dir, processed_data_dir
 
 
 AI_CONCEPT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("gpt_llm", (r"\bgpt-?4\b", r"\bgpt-?3(\.5)?\b", r"\bchatgpt\b", r"\bllms?\b", r"\blarge language model(s)?\b")),
+    ("generative_ai", (r"generative ai", r"\bgenai\b", r"\bfoundation model(s)?\b")),
+    ("transformers", (r"\btransformers?\b", r"\bbert\b", r"\blangchain\b")),
+    ("embeddings_vector_db", (r"\bembeddings?\b", r"vector database", r"vector db", r"vector search")),
     ("agents", (r"\bagentic\b", r"\bagents?\b", r"\bmulti-agent\b", r"\bagent framework\b")),
     ("mcp", (r"\bmcp\b", r"model context protocol")),
     ("skills_tooling", (r"\bskills?\b", r"\btool use\b", r"\btooling\b", r"\bfunction calling\b")),
@@ -23,6 +27,21 @@ AI_CONCEPT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("reasoning", (r"\breasoning\b",)),
     ("inference", (r"\binference\b", r"\bmodel serving\b")),
 ]
+
+MONTH_ABBREVIATIONS = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
+}
 
 
 def materialize_core_analytics() -> dict[str, Path]:
@@ -474,6 +493,41 @@ def plotting_modules(visuals_dir: Path):
     return plt, pd, sns
 
 
+def pretty_month_label(thread_month: str) -> str:
+    """Format YYYY-MM as a compact plotting label."""
+
+    year_text, month_text = thread_month.split("-")
+    month_number = int(month_text)
+    month_name = MONTH_ABBREVIATIONS[month_number]
+    if month_number == 1:
+        return f"{month_name}\n{year_text}"
+    return month_name
+
+
+def pretty_month_labels(thread_months: list[str]) -> list[str]:
+    return [pretty_month_label(thread_month) for thread_month in thread_months]
+
+
+def apply_month_axis(ax, thread_months: list[str]) -> None:
+    """Apply readable month labels and subtle year separators to an x-axis."""
+
+    positions = list(range(len(thread_months)))
+    ax.set_xticks(positions)
+    ax.set_xticklabels(pretty_month_labels(thread_months))
+    ax.tick_params(axis="x", labelrotation=0, labelsize=10, pad=6)
+    for position, thread_month in enumerate(thread_months):
+        if thread_month.endswith("-01"):
+            ax.axvline(position, color="#d9ccb8", linewidth=1.0, alpha=0.45, zorder=0)
+
+
+def rename_month_columns(frame, pd):
+    """Return a copy with month columns relabeled for readability."""
+
+    renamed = frame.copy()
+    renamed.columns = pretty_month_labels(list(frame.columns))
+    return renamed
+
+
 def apply_plot_style(plt, sns) -> None:
     """Apply a consistent, high-contrast visual style."""
 
@@ -509,12 +563,13 @@ def plot_company_posting_counts(plt, pd, sns, output_path: Path, rows: list[dict
     filtered = frame[frame["company_name"].isin(recurring["company_name"])].copy()
     company_order = recurring["company_name"].tolist()
     month_order = sorted(filtered["thread_month"].unique().tolist())
+    month_positions = {month: index for index, month in enumerate(month_order)}
     filtered["company_name"] = pd.Categorical(filtered["company_name"], categories=company_order, ordered=True)
-    filtered["thread_month"] = pd.Categorical(filtered["thread_month"], categories=month_order, ordered=True)
+    filtered["thread_month_position"] = filtered["thread_month"].map(month_positions)
 
     fig, ax = plt.subplots(figsize=(14, 9))
     scatter = ax.scatter(
-        filtered["thread_month"],
+        filtered["thread_month_position"],
         filtered["company_name"],
         s=filtered["hiring_post_count"].astype(int) * 260,
         c=filtered["hiring_post_count"].astype(int),
@@ -525,7 +580,7 @@ def plot_company_posting_counts(plt, pd, sns, output_path: Path, rows: list[dict
     )
     for _, row in filtered.iterrows():
         ax.text(
-            row["thread_month"],
+            row["thread_month_position"],
             row["company_name"],
             str(int(row["hiring_post_count"])),
             ha="center",
@@ -537,6 +592,7 @@ def plot_company_posting_counts(plt, pd, sns, output_path: Path, rows: list[dict
     ax.set_title("Top Recurring Companies By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Company")
+    apply_month_axis(ax, month_order)
     cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
     cbar.set_label("Hiring posts")
     ax.grid(axis="x", linestyle="--", linewidth=0.7, alpha=0.35)
@@ -569,15 +625,18 @@ def plot_remote_status_trends(plt, pd, output_path: Path, rows: list[dict[str, o
         "onsite": "#e76f51",
         "unspecified": "#8d99ae",
     }
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(11, 7), constrained_layout=True)
     bottom = None
     for status in order:
         values = pivot[status].tolist()
-        ax.bar(pivot.index.tolist(), values, bottom=bottom, label=status.title(), color=colors[status], edgecolor="#2b2825")
+        ax.bar(positions, values, bottom=bottom, label=status.title(), color=colors[status], edgecolor="#2b2825")
         bottom = values if bottom is None else [left + right for left, right in zip(bottom, values)]
     ax.set_title("Remote Status Trends By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Hiring posts")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
@@ -606,12 +665,14 @@ def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, ob
         "onsite": "#e76f51",
         "unspecified": "#8d99ae",
     }
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(11.5, 7), constrained_layout=True)
     bottom = None
     for status in order:
         values = pivot[status].tolist()
         ax.bar(
-            pivot.index.tolist(),
+            positions,
             values,
             bottom=bottom,
             label=status.title(),
@@ -622,6 +683,7 @@ def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, ob
     ax.set_title("Remote Status Share By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Share of hiring posts (%)")
+    apply_month_axis(ax, months)
     ax.set_ylim(0, 100)
     ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -641,6 +703,8 @@ def plot_remote_status_share_timeseries(plt, pd, output_path: Path, rows: list[d
         fill_value=0.0,
     )
     order = [status for status in ["remote", "hybrid", "onsite", "unspecified"] if status in pivot.columns]
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     colors = {
         "remote": "#2a9d8f",
         "hybrid": "#e9c46a",
@@ -650,7 +714,7 @@ def plot_remote_status_share_timeseries(plt, pd, output_path: Path, rows: list[d
     fig, ax = plt.subplots(figsize=(11.5, 6.4), constrained_layout=True)
     for status in order:
         ax.plot(
-            pivot.index,
+            positions,
             pivot[status],
             linewidth=3,
             marker="o",
@@ -661,6 +725,7 @@ def plot_remote_status_share_timeseries(plt, pd, output_path: Path, rows: list[d
     ax.set_title("Remote Status Share Over Time")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Share of hiring posts (%)")
+    apply_month_axis(ax, months)
     ax.set_ylim(0, 100)
     ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.12))
     ax.grid(alpha=0.25, linestyle="--")
@@ -673,9 +738,11 @@ def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object
     """Plot the number of companies posting by month as a time series."""
 
     frame = pd.DataFrame(rows).sort_values("thread_month")
+    months = frame["thread_month"].tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
     ax.plot(
-        frame["thread_month"],
+        positions,
         frame["company_count"],
         color="#183a37",
         linewidth=3,
@@ -683,9 +750,9 @@ def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object
         markersize=8,
         label="Resolved company count",
     )
-    ax.fill_between(frame["thread_month"], frame["company_count"], color="#2a9d8f", alpha=0.16)
+    ax.fill_between(positions, frame["company_count"], color="#2a9d8f", alpha=0.16)
     ax.plot(
-        frame["thread_month"],
+        positions,
         frame["observed_company_name_count"],
         color="#d17b0f",
         linewidth=2.2,
@@ -694,11 +761,12 @@ def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object
         linestyle="--",
         label="Observed company-name count",
     )
-    for _, row in frame.iterrows():
-        ax.text(row["thread_month"], row["company_count"] + 1.5, str(int(row["company_count"])), ha="center", fontsize=10)
+    for position, (_, row) in enumerate(frame.iterrows()):
+        ax.text(position, row["company_count"] + 1.5, str(int(row["company_count"])), ha="center", fontsize=10)
     ax.set_title("Companies Posting By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Count of companies")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -725,6 +793,7 @@ def plot_role_family_trends(plt, pd, sns, output_path: Path, rows: list[dict[str
         fill_value=0,
     )
     pivot = pivot.loc[top_families["role_family"]]
+    pivot = rename_month_columns(pivot, pd)
     fig, ax = plt.subplots(figsize=(11.5, 7.5), constrained_layout=True)
     heatmap = sns.heatmap(
         pivot,
@@ -760,13 +829,16 @@ def plot_role_family_timeseries(plt, pd, output_path: Path, rows: list[dict[str,
     )
     filtered = frame[frame["role_family"].isin(top_families["role_family"])]
     pivot = filtered.pivot_table(index="thread_month", columns="role_family", values="role_count", aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
     palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#7f5539", "#8d99ae", "#6d597a"]
     for color, family in zip(palette, pivot.columns, strict=False):
-        ax.plot(pivot.index, pivot[family], linewidth=2.6, marker="o", markersize=6, label=str(family), color=color)
+        ax.plot(positions, pivot[family], linewidth=2.6, marker="o", markersize=6, label=str(family), color=color)
     ax.set_title("Top Role Families Over Time")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Role count")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=2, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -778,9 +850,11 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
     """Plot the number of distinct roles posted by month as a time series."""
 
     frame = pd.DataFrame(rows).sort_values("thread_month")
+    months = frame["thread_month"].tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
     ax.plot(
-        frame["thread_month"],
+        positions,
         frame["distinct_role_count"],
         color="#264653",
         linewidth=3,
@@ -788,9 +862,9 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
         markersize=8,
         label="Distinct normalized roles",
     )
-    ax.fill_between(frame["thread_month"], frame["distinct_role_count"], color="#7db4b5", alpha=0.18)
+    ax.fill_between(positions, frame["distinct_role_count"], color="#7db4b5", alpha=0.18)
     ax.plot(
-        frame["thread_month"],
+        positions,
         frame["distinct_observed_role_count"],
         color="#e76f51",
         linewidth=2.2,
@@ -799,9 +873,9 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
         linestyle="--",
         label="Distinct observed role strings",
     )
-    for _, row in frame.iterrows():
+    for position, (_, row) in enumerate(frame.iterrows()):
         ax.text(
-            row["thread_month"],
+            position,
             row["distinct_role_count"] + 1.5,
             str(int(row["distinct_role_count"])),
             ha="center",
@@ -810,6 +884,7 @@ def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]
     ax.set_title("Distinct Roles Posted By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Count of distinct roles")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -837,13 +912,16 @@ def plot_ai_concepts(plt, pd, output_path: Path, rows: list[dict[str, object]]) 
         .tolist()
     )
     pivot = pivot[concept_order]
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(12.8, 7.2), constrained_layout=True)
     palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#6d597a", "#7f5539", "#8d99ae", "#c08497"]
     for color, concept in zip(palette, pivot.columns, strict=False):
-        ax.plot(pivot.index, pivot[concept], linewidth=2.8, marker="o", markersize=6, label=str(concept).replace("_", " "))
+        ax.plot(positions, pivot[concept], linewidth=2.8, marker="o", markersize=6, label=str(concept).replace("_", " "))
     ax.set_title("AI Hiring Concepts Over Time")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Posts mentioning concept")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=3, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
@@ -872,13 +950,16 @@ def plot_ai_concept_share(plt, pd, output_path: Path, rows: list[dict[str, objec
     )
     filtered = frame[frame["concept_name"].isin(top_concepts)]
     pivot = filtered.pivot_table(index="thread_month", columns="concept_name", values="mention_share_pct", aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
     palette = ["#264653", "#2a9d8f", "#e9c46a", "#e76f51", "#6d597a", "#457b9d"]
     for color, concept in zip(palette, pivot.columns, strict=False):
-        ax.plot(pivot.index, pivot[concept], linewidth=3, marker="o", markersize=7, label=str(concept).replace("_", " "))
+        ax.plot(positions, pivot[concept], linewidth=3, marker="o", markersize=7, label=str(concept).replace("_", " "))
     ax.set_title("AI Concept Share Of Hiring Posts")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Share of hiring posts (%)")
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=2, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")

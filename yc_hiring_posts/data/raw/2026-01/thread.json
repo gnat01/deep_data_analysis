@@ -1,6 +1,6 @@
 {
-  "collection_timestamp_utc": "2026-04-08T09:55:09.928088+00:00",
-  "raw_payload_hash": "57315e9ae53e199af1e74e72f14cdd73b32eb09ece2b83cdf9a3ef8b647ff076",
+  "collection_timestamp_utc": "2026-04-09T04:53:30.325612+00:00",
+  "raw_payload_hash": "045ec35ca2cd7d3ecfc3f9b2ed72a9a480f5724587cb486858db24d0dd8f1426",
   "raw_schema_version": "v1",
   "source_system": "hacker_news",
   "source_url": "https://news.ycombinator.com/item?id=46466074",

@@ -15,7 +15,7 @@ def test_load_source_index_returns_seeded_months() -> None:
     entries = load_source_index(source_index_path)
 
     assert entries
-    assert entries[0].thread_month == "2024-01"
+    assert entries[0].thread_month == "2023-01"
     assert entries[-1].thread_month == "2026-04"
 
 
@@ -26,7 +26,7 @@ def test_verified_entries_present_for_verified_source_index() -> None:
     verified = verified_entries(entries)
 
     assert len(verified) == len(entries)
-    assert verified[0].thread_month == "2024-01"
+    assert verified[0].thread_month == "2023-01"
     assert verified[-1].thread_month == "2026-04"
 
 
@@ -47,8 +47,8 @@ def test_google_queries_for_entries_returns_two_per_month() -> None:
 
     assert len(queries) == 4
     assert [query.thread_month for query in queries] == [
-        "2024-01",
-        "2024-01",
-        "2024-02",
-        "2024-02",
+        "2023-01",
+        "2023-01",
+        "2023-02",
+        "2023-02",
     ]

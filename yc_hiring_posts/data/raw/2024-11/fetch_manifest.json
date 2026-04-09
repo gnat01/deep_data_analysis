@@ -3,8 +3,8 @@
     "thread_html": "/Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts/data/raw/2024-11/thread.html",
     "thread_metadata": "/Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts/data/raw/2024-11/thread.json"
   },
-  "fetched_at_utc": "2026-04-08T09:11:12.376395+00:00",
-  "raw_payload_hash": "f3b7af2636b15bfb4261110a221ff4917e0fdc9642765c2d9e1f40139a340ce9",
+  "fetched_at_utc": "2026-04-09T04:44:52.088375+00:00",
+  "raw_payload_hash": "7d303e2af348c8397e039a0e09ad12dc68f5789eaf1fc2b406da6537e46a5f39",
   "raw_schema_version": "v1",
   "source_url": "https://news.ycombinator.com/item?id=42017580",
   "status": "verified",
