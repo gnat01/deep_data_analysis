@@ -91,3 +91,18 @@ Minimum requirements:
   - source URL
   - matched post or role text
 - a compact summary mode for quick inspection from the terminal
+
+### Task 2: Answer-Oriented KB Helpers
+
+The second task should turn raw retrieval into reusable question helpers.
+
+Minimum helpers:
+
+- company activity over time
+  - which months did a company post?
+  - how many posts / roles / role families per month?
+- company role presence in a range
+  - did a company hire for a given role query or role family between two dates?
+  - return boolean + matched months + evidence rows
+
+These helpers should stay structured and evidence-linked. Natural-language querying still belongs later.

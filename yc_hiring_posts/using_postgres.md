@@ -238,3 +238,26 @@ python src/cli.py search-postgres-roles \
 ```
 
 Remove `--summary-only` if you want the full result set.
+
+Answer month-by-month company activity questions:
+
+```bash
+python src/cli.py company-activity-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --company "DuckDuckGo" \
+  --month-from 2024-12 \
+  --month-to 2026-01 \
+  --limit-evidence 5
+```
+
+Check whether a company hired for a role query or family in a range:
+
+```bash
+python src/cli.py company-role-presence-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --company "DuckDuckGo" \
+  --query "data science" \
+  --month-from 2024-12 \
+  --month-to 2026-01 \
+  --limit-evidence 5
+```

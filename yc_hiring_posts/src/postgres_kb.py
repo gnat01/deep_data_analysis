@@ -505,3 +505,170 @@ def summarize_search_result(result: dict[str, Any]) -> dict[str, object]:
         "row_count": result.get("row_count"),
         "sample_rows": rows[: min(5, len(rows))],
     }
+
+
+def company_activity_timeline_postgres(
+    *,
+    company_name: str,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit_evidence: int = 10,
+) -> dict[str, object]:
+    """Return month-by-month company activity with evidence-linked posts."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(
+        company_filters_sql(
+            company_name,
+            "p.company_id",
+            "coalesce(c.company_name_observed_preferred, p.company_name_observed)",
+            params,
+        )
+    )
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+
+    summary_sql = f"""
+        SELECT
+            t.thread_month,
+            COUNT(*) AS post_count,
+            COUNT(DISTINCT p.post_id) AS distinct_post_count,
+            COUNT(DISTINCT r.role_id) AS role_count,
+            COUNT(DISTINCT r.role_family) AS role_family_count,
+            array_remove(array_agg(DISTINCT r.role_family ORDER BY r.role_family), NULL) AS role_families
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        LEFT JOIN {schema}.roles r ON r.post_id = p.post_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY t.thread_month
+        ORDER BY t.thread_month
+    """
+    evidence_params = [*params, limit_evidence]
+    evidence_sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.remote_status,
+            p.compensation_text,
+            p.post_text_clean,
+            rp.source_url
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month DESC, p.created_at_utc DESC
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(summary_sql, params)
+            summary_columns = [desc[0] for desc in cursor.description]
+            months = [dict(zip(summary_columns, row, strict=False)) for row in cursor.fetchall()]
+            cursor.execute(evidence_sql, evidence_params)
+            evidence_columns = [desc[0] for desc in cursor.description]
+            evidence_rows = [dict(zip(evidence_columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "company_activity_timeline",
+        "schema": schema,
+        "filters": {
+            "company_name": company_name,
+            "month_from": month_from,
+            "month_to": month_to,
+            "limit_evidence": limit_evidence,
+        },
+        "active_month_count": len(months),
+        "months": months,
+        "evidence_rows": evidence_rows,
+    }
+
+
+def company_role_presence_postgres(
+    *,
+    company_name: str,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str | None = None,
+    role_family: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit_evidence: int = 10,
+) -> dict[str, object]:
+    """Return whether a company posted roles matching the requested role text/family in a range."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(
+        company_filters_sql(
+            company_name,
+            "coalesce(r.company_id, p.company_id)",
+            "coalesce(c.company_name_observed_preferred, p.company_name_observed)",
+            params,
+        )
+    )
+    where_clauses.extend(role_family_filters_sql(role_family, "r.role_family", params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    if query:
+        where_clauses.append("r.role_search_tsv @@ websearch_to_tsquery('english', %s)")
+        params.append(query)
+
+    summary_sql = f"""
+        SELECT
+            COUNT(*) AS matched_role_count,
+            COUNT(DISTINCT t.thread_month) AS matched_month_count,
+            array_remove(array_agg(DISTINCT t.thread_month ORDER BY t.thread_month), NULL) AS matched_months
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+    """
+    evidence_params = [*params, limit_evidence]
+    evidence_sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            r.role_title_observed,
+            r.role_title_normalized,
+            r.role_family,
+            r.role_remote_status,
+            p.post_text_clean,
+            rp.source_url
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month DESC, r.role_id
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(summary_sql, params)
+            summary_columns = [desc[0] for desc in cursor.description]
+            summary_row = dict(zip(summary_columns, cursor.fetchone(), strict=False))
+            cursor.execute(evidence_sql, evidence_params)
+            evidence_columns = [desc[0] for desc in cursor.description]
+            evidence_rows = [dict(zip(evidence_columns, row, strict=False)) for row in cursor.fetchall()]
+    matched_role_count = int(summary_row.get("matched_role_count") or 0)
+    return {
+        "entity": "company_role_presence",
+        "schema": schema,
+        "filters": {
+            "company_name": company_name,
+            "query": query,
+            "role_family": role_family,
+            "month_from": month_from,
+            "month_to": month_to,
+            "limit_evidence": limit_evidence,
+        },
+        "match_found": matched_role_count > 0,
+        "matched_role_count": matched_role_count,
+        "matched_month_count": int(summary_row.get("matched_month_count") or 0),
+        "matched_months": summary_row.get("matched_months") or [],
+        "evidence_rows": evidence_rows,
+    }

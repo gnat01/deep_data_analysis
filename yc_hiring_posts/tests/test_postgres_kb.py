@@ -10,7 +10,9 @@ if str(SRC_DIR) not in sys.path:
 from postgres_kb import (
     DEFAULT_DB_SCHEMA,
     TABLE_SPECS,
+    company_activity_timeline_postgres,
     company_filters_sql,
+    company_role_presence_postgres,
     insert_sql_for_spec,
     month_filters_sql,
     postgres_schema_sql,
@@ -86,3 +88,85 @@ def test_summarize_search_result_truncates_rows() -> None:
     assert summary["row_count"] == 7
     assert len(summary["sample_rows"]) == 5
     assert summary["sample_rows"][0]["post_id"] == "post_0"
+
+
+def test_company_helper_functions_return_expected_shapes(monkeypatch) -> None:
+    class FakeCursor:
+        def __init__(self) -> None:
+            self.description = []
+            self._rows = []
+
+        def execute(self, sql, params):  # noqa: ANN001
+            if "GROUP BY t.thread_month" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("post_count",),
+                    ("distinct_post_count",),
+                    ("role_count",),
+                    ("role_family_count",),
+                    ("role_families",),
+                ]
+                self._rows = [("2025-01", 2, 2, 3, 2, ["data", "engineering"])]
+            elif "COUNT(*) AS matched_role_count" in sql:
+                self.description = [
+                    ("matched_role_count",),
+                    ("matched_month_count",),
+                    ("matched_months",),
+                ]
+                self._rows = [(2, 1, ["2025-01"])]
+            elif "FROM yc_hiring.posts p" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("remote_status",),
+                    ("compensation_text",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                ]
+                self._rows = [("2025-01", "DuckDuckGo", "remote", None, "Example post", "https://example.com/post")]
+            else:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("role_title_observed",),
+                    ("role_title_normalized",),
+                    ("role_family",),
+                    ("role_remote_status",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                ]
+                self._rows = [("2025-01", "DuckDuckGo", "Data Scientist", "Data Scientist", "data", "remote", "Example post", "https://example.com/post")]
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def fetchone(self):
+            return self._rows[0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    monkeypatch.setattr("postgres_kb.connect_postgres", lambda database_url=None: FakeConnection())
+
+    timeline = company_activity_timeline_postgres(company_name="DuckDuckGo")
+    assert timeline["active_month_count"] == 1
+    assert timeline["months"][0]["thread_month"] == "2025-01"
+    assert timeline["evidence_rows"][0]["company_name"] == "DuckDuckGo"
+
+    presence = company_role_presence_postgres(company_name="DuckDuckGo", query="data science")
+    assert presence["match_found"] is True
+    assert presence["matched_role_count"] == 2
+    assert presence["matched_months"] == ["2025-01"]

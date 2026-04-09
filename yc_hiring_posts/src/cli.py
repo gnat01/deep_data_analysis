@@ -14,6 +14,8 @@ from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
 from postgres_kb import (
+    company_activity_timeline_postgres,
+    company_role_presence_postgres,
     DEFAULT_DB_SCHEMA,
     initialize_postgres_kb,
     inspect_postgres_kb,
@@ -143,6 +145,30 @@ def build_parser() -> argparse.ArgumentParser:
     search_roles_parser.add_argument("--month-to", default=None)
     search_roles_parser.add_argument("--limit", type=int, default=20)
     search_roles_parser.add_argument("--summary-only", action="store_true")
+
+    company_timeline_parser = subparsers.add_parser(
+        "company-activity-postgres",
+        help="Show month-by-month activity for one company from PostgreSQL.",
+    )
+    company_timeline_parser.add_argument("--database-url", default=None)
+    company_timeline_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    company_timeline_parser.add_argument("--company", dest="company_name", required=True)
+    company_timeline_parser.add_argument("--month-from", default=None)
+    company_timeline_parser.add_argument("--month-to", default=None)
+    company_timeline_parser.add_argument("--limit-evidence", type=int, default=10)
+
+    company_presence_parser = subparsers.add_parser(
+        "company-role-presence-postgres",
+        help="Check whether a company hired for a role query/family in a month range.",
+    )
+    company_presence_parser.add_argument("--database-url", default=None)
+    company_presence_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    company_presence_parser.add_argument("--company", dest="company_name", required=True)
+    company_presence_parser.add_argument("--query", default=None)
+    company_presence_parser.add_argument("--role-family", default=None)
+    company_presence_parser.add_argument("--month-from", default=None)
+    company_presence_parser.add_argument("--month-to", default=None)
+    company_presence_parser.add_argument("--limit-evidence", type=int, default=10)
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -309,6 +335,32 @@ def main() -> int:
         )
         if args.summary_only:
             result = summarize_search_result(result)
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-activity-postgres":
+        result = company_activity_timeline_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-role-presence-postgres":
+        result = company_role_presence_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            query=args.query,
+            role_family=args.role_family,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit_evidence=args.limit_evidence,
+        )
         print(json.dumps(result, indent=2, default=str))
         return 0
 
