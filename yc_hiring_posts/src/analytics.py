@@ -30,15 +30,21 @@ def materialize_core_analytics() -> dict[str, Path]:
     month_by_thread_id = {row["thread_id"]: row["thread_month"] for row in threads}
 
     company_posting_rows = company_posting_counts_by_month(posts, company_name_by_id, month_by_thread_id)
+    company_summary_rows = company_summary_by_month(posts, month_by_thread_id)
     remote_rows = remote_status_trends_by_month(posts, month_by_thread_id)
     remote_share_rows = remote_status_share_by_month(remote_rows)
     role_family_rows = role_family_trends_by_month(roles, posts, company_name_by_id, month_by_thread_id)
+    distinct_role_rows = distinct_roles_by_month(roles, posts, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
 
     outputs = {
         "company_posting_counts_by_month": write_csv(
             analytics_dir / "company_posting_counts_by_month.csv",
             company_posting_rows,
+        ),
+        "company_summary_by_month": write_csv(
+            analytics_dir / "company_summary_by_month.csv",
+            company_summary_rows,
         ),
         "remote_status_trends_by_month": write_csv(
             analytics_dir / "remote_status_trends_by_month.csv",
@@ -52,6 +58,10 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "role_family_trends_by_month.csv",
             role_family_rows,
         ),
+        "distinct_roles_by_month": write_csv(
+            analytics_dir / "distinct_roles_by_month.csv",
+            distinct_role_rows,
+        ),
         "recurring_company_hiring_patterns": write_csv(
             analytics_dir / "recurring_company_hiring_patterns.csv",
             recurring_rows,
@@ -60,9 +70,11 @@ def materialize_core_analytics() -> dict[str, Path]:
     visual_outputs = write_analytics_visuals(
         visuals_dir=visuals_dir,
         company_posting_rows=company_posting_rows,
+        company_summary_rows=company_summary_rows,
         remote_rows=remote_rows,
         remote_share_rows=remote_share_rows,
         role_family_rows=role_family_rows,
+        distinct_role_rows=distinct_role_rows,
         recurring_rows=recurring_rows,
     )
     outputs.update(visual_outputs)
@@ -152,6 +164,38 @@ def remote_status_share_by_month(remote_rows: list[dict[str, object]]) -> list[d
     return rows
 
 
+def company_summary_by_month(posts: list[dict[str, object]], month_by_thread_id: dict[str, str]) -> list[dict[str, object]]:
+    """Summarize company participation by month."""
+
+    company_ids_by_month: dict[str, set[str]] = defaultdict(set)
+    observed_names_by_month: dict[str, set[str]] = defaultdict(set)
+    total_hiring_posts: Counter[str] = Counter()
+
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        month = month_by_thread_id[str(post["thread_id"])]
+        total_hiring_posts[month] += 1
+        company_id = post.get("company_id")
+        if company_id is not None:
+            company_ids_by_month[month].add(str(company_id))
+        observed_name = post.get("company_name_observed")
+        if isinstance(observed_name, str) and observed_name.strip():
+            observed_names_by_month[month].add(observed_name.strip())
+
+    rows = []
+    for month in sorted(total_hiring_posts):
+        rows.append(
+            {
+                "thread_month": month,
+                "company_count": len(company_ids_by_month[month]),
+                "observed_company_name_count": len(observed_names_by_month[month]),
+                "total_hiring_posts": total_hiring_posts[month],
+            }
+        )
+    return rows
+
+
 def role_family_trends_by_month(
     roles: list[dict[str, object]],
     posts: list[dict[str, object]],
@@ -175,6 +219,47 @@ def role_family_trends_by_month(
                 "thread_month": month,
                 "role_family": role_family,
                 "role_count": role_count,
+            }
+        )
+    return rows
+
+
+def distinct_roles_by_month(
+    roles: list[dict[str, object]],
+    posts: list[dict[str, object]],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Summarize distinct role titles by month."""
+
+    thread_id_by_post_id = {str(row["post_id"]): str(row["thread_id"]) for row in posts if row.get("is_hiring_post")}
+    normalized_roles_by_month: dict[str, set[str]] = defaultdict(set)
+    observed_roles_by_month: dict[str, set[str]] = defaultdict(set)
+    total_role_rows: Counter[str] = Counter()
+
+    for role in roles:
+        post_id = str(role["post_id"])
+        thread_id = thread_id_by_post_id.get(post_id)
+        if thread_id is None:
+            continue
+        month = month_by_thread_id[thread_id]
+        total_role_rows[month] += 1
+
+        normalized_title = role.get("role_title_normalized")
+        if isinstance(normalized_title, str) and normalized_title.strip():
+            normalized_roles_by_month[month].add(normalized_title.strip())
+
+        observed_title = role.get("role_title_observed")
+        if isinstance(observed_title, str) and observed_title.strip():
+            observed_roles_by_month[month].add(observed_title.strip())
+
+    rows = []
+    for month in sorted(total_role_rows):
+        rows.append(
+            {
+                "thread_month": month,
+                "distinct_role_count": len(normalized_roles_by_month[month]),
+                "distinct_observed_role_count": len(observed_roles_by_month[month]),
+                "total_role_rows": total_role_rows[month],
             }
         )
     return rows
@@ -246,9 +331,11 @@ def write_analytics_visuals(
     *,
     visuals_dir: Path,
     company_posting_rows: list[dict[str, object]],
+    company_summary_rows: list[dict[str, object]],
     remote_rows: list[dict[str, object]],
     remote_share_rows: list[dict[str, object]],
     role_family_rows: list[dict[str, object]],
+    distinct_role_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
     """Write a polished visual for each core analytical output."""
@@ -260,6 +347,9 @@ def write_analytics_visuals(
         "company_posting_counts_visual": plot_company_posting_counts(
             plt, pd, sns, visuals_dir / "company_posting_counts_by_month.png", company_posting_rows
         ),
+        "company_summary_visual": plot_company_summary(
+            plt, pd, visuals_dir / "company_summary_by_month.png", company_summary_rows
+        ),
         "remote_status_trends_visual": plot_remote_status_trends(
             plt, pd, visuals_dir / "remote_status_trends_by_month.png", remote_rows
         ),
@@ -268,6 +358,9 @@ def write_analytics_visuals(
         ),
         "role_family_trends_visual": plot_role_family_trends(
             plt, pd, sns, visuals_dir / "role_family_trends_by_month.png", role_family_rows
+        ),
+        "distinct_roles_visual": plot_distinct_roles(
+            plt, pd, visuals_dir / "distinct_roles_by_month.png", distinct_role_rows
         ),
         "recurring_company_hiring_patterns_visual": plot_recurring_company_patterns(
             plt, pd, visuals_dir / "recurring_company_hiring_patterns.png", recurring_rows
@@ -449,6 +542,43 @@ def plot_remote_status_share(plt, pd, output_path: Path, rows: list[dict[str, ob
     return output_path
 
 
+def plot_company_summary(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the number of companies posting by month as a time series."""
+
+    frame = pd.DataFrame(rows).sort_values("thread_month")
+    fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
+    ax.plot(
+        frame["thread_month"],
+        frame["company_count"],
+        color="#183a37",
+        linewidth=3,
+        marker="o",
+        markersize=8,
+        label="Resolved company count",
+    )
+    ax.fill_between(frame["thread_month"], frame["company_count"], color="#2a9d8f", alpha=0.16)
+    ax.plot(
+        frame["thread_month"],
+        frame["observed_company_name_count"],
+        color="#d17b0f",
+        linewidth=2.2,
+        marker="D",
+        markersize=6,
+        linestyle="--",
+        label="Observed company-name count",
+    )
+    for _, row in frame.iterrows():
+        ax.text(row["thread_month"], row["company_count"] + 1.5, str(int(row["company_count"])), ha="center", fontsize=10)
+    ax.set_title("Companies Posting By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Count of companies")
+    ax.legend(frameon=True, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def plot_role_family_trends(plt, pd, sns, output_path: Path, rows: list[dict[str, object]]) -> Path:
     """Plot a heatmap of role families by month."""
 
@@ -486,6 +616,49 @@ def plot_role_family_trends(plt, pd, sns, output_path: Path, rows: list[dict[str
     ax.set_title("Role Family Trends By Month")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Role family")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_distinct_roles(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the number of distinct roles posted by month as a time series."""
+
+    frame = pd.DataFrame(rows).sort_values("thread_month")
+    fig, ax = plt.subplots(figsize=(11.5, 6.2), constrained_layout=True)
+    ax.plot(
+        frame["thread_month"],
+        frame["distinct_role_count"],
+        color="#264653",
+        linewidth=3,
+        marker="o",
+        markersize=8,
+        label="Distinct normalized roles",
+    )
+    ax.fill_between(frame["thread_month"], frame["distinct_role_count"], color="#7db4b5", alpha=0.18)
+    ax.plot(
+        frame["thread_month"],
+        frame["distinct_observed_role_count"],
+        color="#e76f51",
+        linewidth=2.2,
+        marker="s",
+        markersize=6,
+        linestyle="--",
+        label="Distinct observed role strings",
+    )
+    for _, row in frame.iterrows():
+        ax.text(
+            row["thread_month"],
+            row["distinct_role_count"] + 1.5,
+            str(int(row["distinct_role_count"])),
+            ha="center",
+            fontsize=10,
+        )
+    ax.set_title("Distinct Roles Posted By Month")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Count of distinct roles")
+    ax.legend(frameon=True, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return output_path

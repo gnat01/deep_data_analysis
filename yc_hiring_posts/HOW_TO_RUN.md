@@ -299,9 +299,11 @@ This writes:
 
 ```text
 data/processed/analytics/company_posting_counts_by_month.csv
+data/processed/analytics/company_summary_by_month.csv
 data/processed/analytics/remote_status_trends_by_month.csv
 data/processed/analytics/remote_status_share_by_month.csv
 data/processed/analytics/role_family_trends_by_month.csv
+data/processed/analytics/distinct_roles_by_month.csv
 data/processed/analytics/recurring_company_hiring_patterns.csv
 data/processed/analytics/analytics_manifest.json
 data/processed/analytics/visuals/
@@ -312,8 +314,10 @@ Inspect the outputs:
 ```bash
 ls data/processed/analytics
 sed -n '1,10p' data/processed/analytics/company_posting_counts_by_month.csv
+sed -n '1,10p' data/processed/analytics/company_summary_by_month.csv
 sed -n '1,12p' data/processed/analytics/remote_status_trends_by_month.csv
 sed -n '1,12p' data/processed/analytics/remote_status_share_by_month.csv
+sed -n '1,10p' data/processed/analytics/distinct_roles_by_month.csv
 sed -n '1,12p' data/processed/analytics/recurring_company_hiring_patterns.csv
 ls data/processed/analytics/visuals
 ```
@@ -322,9 +326,11 @@ The visuals directory now includes:
 
 ```text
 data/processed/analytics/visuals/company_posting_counts_by_month.png
+data/processed/analytics/visuals/company_summary_by_month.png
 data/processed/analytics/visuals/remote_status_trends_by_month.png
 data/processed/analytics/visuals/remote_status_share_by_month.png
 data/processed/analytics/visuals/role_family_trends_by_month.png
+data/processed/analytics/visuals/distinct_roles_by_month.png
 data/processed/analytics/visuals/recurring_company_hiring_patterns.png
 ```
 

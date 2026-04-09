@@ -28,14 +28,18 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     outputs = materialize_core_analytics()
 
     assert outputs["company_posting_counts_by_month"].exists()
+    assert outputs["company_summary_by_month"].exists()
     assert outputs["remote_status_trends_by_month"].exists()
     assert outputs["remote_status_share_by_month"].exists()
     assert outputs["role_family_trends_by_month"].exists()
+    assert outputs["distinct_roles_by_month"].exists()
     assert outputs["recurring_company_hiring_patterns"].exists()
     assert outputs["company_posting_counts_visual"].exists()
+    assert outputs["company_summary_visual"].exists()
     assert outputs["remote_status_trends_visual"].exists()
     assert outputs["remote_status_share_visual"].exists()
     assert outputs["role_family_trends_visual"].exists()
+    assert outputs["distinct_roles_visual"].exists()
     assert outputs["recurring_company_hiring_patterns_visual"].exists()
     assert outputs["visual_index"].exists()
     assert outputs["manifest"].exists()
@@ -49,6 +53,16 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         share_rows = list(csv.DictReader(handle))
     assert share_rows
     assert {"thread_month", "remote_status", "share_pct"} <= set(share_rows[0].keys())
+
+    with outputs["company_summary_by_month"].open(encoding="utf-8", newline="") as handle:
+        company_summary_rows = list(csv.DictReader(handle))
+    assert company_summary_rows
+    assert {"thread_month", "company_count", "observed_company_name_count"} <= set(company_summary_rows[0].keys())
+
+    with outputs["distinct_roles_by_month"].open(encoding="utf-8", newline="") as handle:
+        distinct_role_rows = list(csv.DictReader(handle))
+    assert distinct_role_rows
+    assert {"thread_month", "distinct_role_count", "distinct_observed_role_count"} <= set(distinct_role_rows[0].keys())
 
 
 def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:
