@@ -14,8 +14,11 @@ from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
 from postgres_kb import (
+    ai_concept_timeline_postgres,
     company_activity_timeline_postgres,
+    company_remote_change_postgres,
     companies_for_role_postgres,
+    compensation_history_postgres,
     company_role_presence_postgres,
     DEFAULT_DB_SCHEMA,
     evidence_lookup_postgres,
@@ -23,6 +26,8 @@ from postgres_kb import (
     inspect_postgres_kb,
     load_postgres_kb,
     month_summary_postgres,
+    remote_mix_postgres,
+    role_requirement_change_summary_postgres,
     role_family_timeline_postgres,
     search_posts_postgres,
     search_roles_postgres,
@@ -218,6 +223,60 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_lookup_parser.add_argument("--month-to", default=None)
     evidence_lookup_parser.add_argument("--limit", type=int, default=10)
     evidence_lookup_parser.add_argument("--summary-only", action="store_true")
+
+    remote_mix_parser = subparsers.add_parser(
+        "remote-mix-postgres",
+        help="Return remote-status distribution by month, optionally for one company.",
+    )
+    remote_mix_parser.add_argument("--database-url", default=None)
+    remote_mix_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    remote_mix_parser.add_argument("--company", dest="company_name", default=None)
+    remote_mix_parser.add_argument("--month-from", default=None)
+    remote_mix_parser.add_argument("--month-to", default=None)
+
+    remote_change_parser = subparsers.add_parser(
+        "company-remote-change-postgres",
+        help="Return companies whose remote-status mix changes over time.",
+    )
+    remote_change_parser.add_argument("--database-url", default=None)
+    remote_change_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    remote_change_parser.add_argument("--month-from", default=None)
+    remote_change_parser.add_argument("--month-to", default=None)
+    remote_change_parser.add_argument("--limit", type=int, default=50)
+
+    compensation_parser = subparsers.add_parser(
+        "compensation-history-postgres",
+        help="Return compensation-bearing posts across time.",
+    )
+    compensation_parser.add_argument("--database-url", default=None)
+    compensation_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    compensation_parser.add_argument("--company", dest="company_name", default=None)
+    compensation_parser.add_argument("--query", default=None)
+    compensation_parser.add_argument("--month-from", default=None)
+    compensation_parser.add_argument("--month-to", default=None)
+    compensation_parser.add_argument("--limit", type=int, default=20)
+
+    ai_timeline_parser = subparsers.add_parser(
+        "ai-concept-timeline-postgres",
+        help="Return AI concept counts by month using the shared concept dictionary.",
+    )
+    ai_timeline_parser.add_argument("--database-url", default=None)
+    ai_timeline_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    ai_timeline_parser.add_argument("--concept-name", default=None)
+    ai_timeline_parser.add_argument("--month-from", default=None)
+    ai_timeline_parser.add_argument("--month-to", default=None)
+    ai_timeline_parser.add_argument("--limit-evidence", type=int, default=10)
+
+    req_summary_parser = subparsers.add_parser(
+        "role-requirement-change-summary-postgres",
+        help="Summarize how requirement language changed for a role query across time.",
+    )
+    req_summary_parser.add_argument("--database-url", default=None)
+    req_summary_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    req_summary_parser.add_argument("--query", required=True)
+    req_summary_parser.add_argument("--month-from", default=None)
+    req_summary_parser.add_argument("--month-to", default=None)
+    req_summary_parser.add_argument("--limit-evidence", type=int, default=8)
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -465,6 +524,65 @@ def main() -> int:
         )
         if args.summary_only:
             result = summarize_search_result(result)
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "remote-mix-postgres":
+        result = remote_mix_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-remote-change-postgres":
+        result = company_remote_change_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "compensation-history-postgres":
+        result = compensation_history_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            query=args.query,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "ai-concept-timeline-postgres":
+        result = ai_concept_timeline_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            concept_name=args.concept_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "role-requirement-change-summary-postgres":
+        result = role_requirement_change_summary_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            query=args.query,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit_evidence=args.limit_evidence,
+        )
         print(json.dumps(result, indent=2, default=str))
         return 0
 

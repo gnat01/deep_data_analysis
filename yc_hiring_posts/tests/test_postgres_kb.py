@@ -8,17 +8,22 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from postgres_kb import (
+    ai_concept_timeline_postgres,
     DEFAULT_DB_SCHEMA,
+    company_remote_change_postgres,
     companies_for_role_postgres,
     TABLE_SPECS,
     company_activity_timeline_postgres,
     company_filters_sql,
     company_role_presence_postgres,
+    compensation_history_postgres,
     evidence_lookup_postgres,
     insert_sql_for_spec,
     month_filters_sql,
     month_summary_postgres,
     postgres_schema_sql,
+    remote_mix_postgres,
+    role_requirement_change_summary_postgres,
     role_family_timeline_postgres,
     summarize_search_result,
     row_values_for_spec,
@@ -279,3 +284,102 @@ def test_task3_helper_functions_return_expected_shapes(monkeypatch) -> None:
     evidence = evidence_lookup_postgres(query="privacy")
     assert evidence["entity"] == "posts"
     assert evidence["row_count"] == 1
+
+
+def test_complex_helper_functions_return_expected_shapes(monkeypatch) -> None:
+    class FakeCursor:
+        def __init__(self) -> None:
+            self.description = []
+            self._rows = []
+
+        def execute(self, sql, params):  # noqa: ANN001
+            if "GROUP BY t.thread_month, p.remote_status" in sql:
+                self.description = [("thread_month",), ("remote_status",), ("post_count",)]
+                self._rows = [("2025-01", "remote", 12)]
+            elif "HAVING COUNT(DISTINCT p.remote_status) > 1" in sql:
+                self.description = [
+                    ("company_name",),
+                    ("company_id",),
+                    ("distinct_remote_status_count",),
+                    ("remote_statuses",),
+                    ("active_month_count",),
+                ]
+                self._rows = [("DuckDuckGo", "company_1", 2, ["hybrid", "remote"], 5)]
+            elif "p.compensation_text IS NOT NULL" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("remote_status",),
+                    ("compensation_text",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                    ("text_rank",),
+                ]
+                self._rows = [("2025-01", "DuckDuckGo", "remote", "$150k-$200k", "Example comp", "https://example.com/post", None)]
+            elif "FROM yc_hiring.posts p" in sql and "coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name" in sql and "source_url" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                ]
+                self._rows = [("2025-01", "OpenAI", "We work on agents, MCP, and evals", "https://example.com/post")]
+            else:
+                self.description = [
+                    ("thread_month",),
+                    ("role_title_observed",),
+                    ("role_family",),
+                    ("requirements_text",),
+                    ("skills_text",),
+                    ("responsibilities_text",),
+                    ("post_text_clean",),
+                    ("source_url",),
+                ]
+                self._rows = [
+                    ("2024-01", "AI Engineer", "ml_ai", "python ml", "llm", "ship models", "We build LLM apps", "https://example.com/1"),
+                    ("2026-01", "AI Engineer", "ml_ai", "agents evals", "mcp", "own workflows", "We build agent systems", "https://example.com/2"),
+                ]
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def fetchone(self):
+            return self._rows[0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    monkeypatch.setattr("postgres_kb.connect_postgres", lambda database_url=None: FakeConnection())
+
+    remote_mix = remote_mix_postgres()
+    assert remote_mix["row_count"] == 1
+    assert remote_mix["rows"][0]["remote_status"] == "remote"
+
+    remote_change = company_remote_change_postgres()
+    assert remote_change["row_count"] == 1
+    assert remote_change["rows"][0]["distinct_remote_status_count"] == 2
+
+    comp = compensation_history_postgres()
+    assert comp["row_count"] == 1
+    assert comp["rows"][0]["compensation_text"] == "$150k-$200k"
+
+    ai_timeline = ai_concept_timeline_postgres()
+    assert ai_timeline["entity"] == "ai_concept_timeline"
+    assert ai_timeline["row_count"] >= 1
+
+    summary = role_requirement_change_summary_postgres(query="ai engineer")
+    assert summary["match_found"] is True
+    assert summary["summary_points"]

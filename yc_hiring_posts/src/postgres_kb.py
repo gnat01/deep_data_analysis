@@ -7,8 +7,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import re
+from collections import Counter
 
 from storage import processed_data_dir, project_root
+from analytics import AI_CONCEPT_PATTERNS
 
 
 DEFAULT_DB_SCHEMA = "yc_hiring"
@@ -858,3 +861,339 @@ def evidence_lookup_postgres(
         month_to=month_to,
         limit=limit,
     )
+
+
+def remote_mix_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    company_name: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+) -> dict[str, object]:
+    """Return remote-status distribution by month, optionally for one company."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(company_filters_sql(company_name, "p.company_id", "coalesce(c.company_name_observed_preferred, p.company_name_observed)", params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            t.thread_month,
+            p.remote_status,
+            COUNT(DISTINCT p.post_id) AS post_count
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY t.thread_month, p.remote_status
+        ORDER BY t.thread_month, p.remote_status
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "remote_mix",
+        "schema": schema,
+        "filters": {"company_name": company_name, "month_from": month_from, "month_to": month_to},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def company_remote_change_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 50,
+) -> dict[str, object]:
+    """Return companies whose remote-status patterns vary over time."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    params.append(limit)
+    sql = f"""
+        SELECT
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            COUNT(DISTINCT p.remote_status) AS distinct_remote_status_count,
+            array_remove(array_agg(DISTINCT p.remote_status ORDER BY p.remote_status), NULL) AS remote_statuses,
+            COUNT(DISTINCT t.thread_month) AS active_month_count
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY coalesce(c.company_name_observed_preferred, p.company_name_observed), p.company_id
+        HAVING COUNT(DISTINCT p.remote_status) > 1
+        ORDER BY distinct_remote_status_count DESC, active_month_count DESC, company_name
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "company_remote_change",
+        "schema": schema,
+        "filters": {"month_from": month_from, "month_to": month_to, "limit": limit},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def compensation_history_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    company_name: str | None = None,
+    query: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 20,
+) -> dict[str, object]:
+    """Return compensation-bearing posts, optionally filtered by company or text query."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE", "p.compensation_text IS NOT NULL"]
+    where_clauses.extend(company_filters_sql(company_name, "p.company_id", "coalesce(c.company_name_observed_preferred, p.company_name_observed)", params))
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    rank_sql = "NULL::double precision AS text_rank"
+    order_sql = "t.thread_month DESC, p.created_at_utc DESC, p.post_id"
+    select_params: list[object] = []
+    if query:
+        where_clauses.append("p.post_search_tsv @@ websearch_to_tsquery('english', %s)")
+        params.append(query)
+        rank_sql = "ts_rank_cd(p.post_search_tsv, websearch_to_tsquery('english', %s)) AS text_rank"
+        select_params.append(query)
+        order_sql = "text_rank DESC NULLS LAST, t.thread_month DESC, p.created_at_utc DESC, p.post_id"
+    sql_params = [*select_params, *params, limit]
+    sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.remote_status,
+            p.compensation_text,
+            p.post_text_clean,
+            rp.source_url,
+            {rank_sql}
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY {order_sql}
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, sql_params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "compensation_history",
+        "schema": schema,
+        "filters": {"company_name": company_name, "query": query, "month_from": month_from, "month_to": month_to, "limit": limit},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def ai_concept_matches(text: str) -> list[str]:
+    lowered = str(text or "")
+    matched: list[str] = []
+    for concept_name, patterns in AI_CONCEPT_PATTERNS:
+        if any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in patterns):
+            matched.append(concept_name)
+    return matched
+
+
+def ai_concept_timeline_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    concept_name: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit_evidence: int = 10,
+) -> dict[str, object]:
+    """Return month-level AI concept counts using the same concept dictionary as analytics."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.post_text_clean,
+            rp.source_url
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month, p.post_id
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    counts: dict[tuple[str, str], int] = {}
+    evidence_rows: list[dict[str, object]] = []
+    for row in rows:
+        matched_concepts = ai_concept_matches(str(row.get("post_text_clean") or ""))
+        for matched in matched_concepts:
+            if concept_name and matched != concept_name:
+                continue
+            key = (str(row["thread_month"]), matched)
+            counts[key] = counts.get(key, 0) + 1
+            if len(evidence_rows) < limit_evidence:
+                evidence_rows.append(
+                    {
+                        "thread_month": row["thread_month"],
+                        "company_name": row["company_name"],
+                        "concept_name": matched,
+                        "source_url": row["source_url"],
+                        "post_text_clean": row["post_text_clean"],
+                    }
+                )
+    timeline_rows = [
+        {"thread_month": month, "concept_name": concept, "mentioning_post_count": count}
+        for (month, concept), count in sorted(counts.items())
+    ]
+    return {
+        "entity": "ai_concept_timeline",
+        "schema": schema,
+        "filters": {"concept_name": concept_name, "month_from": month_from, "month_to": month_to, "limit_evidence": limit_evidence},
+        "row_count": len(timeline_rows),
+        "rows": timeline_rows,
+        "evidence_rows": evidence_rows,
+    }
+
+
+STOPWORDS = {
+    "the","and","for","with","that","this","from","into","your","their","they","will","have","has","are","our","you","who","all","job","role","roles","engineer","engineering","software","team","work","working","years","year","experience","remote","full","time","company","hiring","looking","join","build","building","using","help","more","than","its","our","about","across","only","where","while","what","when","how","why","use","used","need","needs","new","us","we","it","to","of","in","on","at","as","be","an","a","or"
+}
+
+
+def significant_terms(texts: list[str], limit: int = 8) -> list[str]:
+    counter: Counter[str] = Counter()
+    for text in texts:
+        for token in re.findall(r"[A-Za-z][A-Za-z\-/+]{2,}", text.lower()):
+            if token in STOPWORDS:
+                continue
+            counter[token] += 1
+    return [term for term, _count in counter.most_common(limit)]
+
+
+def role_requirement_change_summary_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    query: str,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit_evidence: int = 8,
+) -> dict[str, object]:
+    """Summarize how requirements changed for a role query across time, using evidence rows."""
+
+    params: list[object] = [query]
+    where_clauses = ["p.is_hiring_post = TRUE", "r.role_search_tsv @@ websearch_to_tsquery('english', %s)"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            t.thread_month,
+            r.role_title_observed,
+            r.role_family,
+            coalesce(r.requirements_text, '') AS requirements_text,
+            coalesce(r.skills_text, '') AS skills_text,
+            coalesce(r.responsibilities_text, '') AS responsibilities_text,
+            p.post_text_clean,
+            rp.source_url
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        JOIN {schema}.raw_posts rp ON rp.raw_post_id = p.raw_post_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month, r.role_id
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    if not rows:
+        return {
+            "entity": "role_requirement_change_summary",
+            "schema": schema,
+            "filters": {"query": query, "month_from": month_from, "month_to": month_to, "limit_evidence": limit_evidence},
+            "match_found": False,
+            "summary_points": [],
+            "evidence_rows": [],
+        }
+    months = sorted({str(row["thread_month"]) for row in rows})
+    midpoint = max(1, len(months) // 2)
+    early_months = set(months[:midpoint])
+    late_months = set(months[midpoint:])
+    if not late_months:
+        late_months = set(months[-1:])
+    early_texts = [
+        " ".join(
+            [
+                str(row.get("role_title_observed") or ""),
+                str(row.get("requirements_text") or ""),
+                str(row.get("skills_text") or ""),
+                str(row.get("responsibilities_text") or ""),
+                str(row.get("post_text_clean") or ""),
+            ]
+        )
+        for row in rows
+        if str(row["thread_month"]) in early_months
+    ]
+    late_texts = [
+        " ".join(
+            [
+                str(row.get("role_title_observed") or ""),
+                str(row.get("requirements_text") or ""),
+                str(row.get("skills_text") or ""),
+                str(row.get("responsibilities_text") or ""),
+                str(row.get("post_text_clean") or ""),
+            ]
+        )
+        for row in rows
+        if str(row["thread_month"]) in late_months
+    ]
+    early_terms = significant_terms(early_texts, limit=8)
+    late_terms = significant_terms(late_texts, limit=8)
+    emerging_terms = [term for term in late_terms if term not in early_terms][:5]
+    fading_terms = [term for term in early_terms if term not in late_terms][:5]
+    early_concepts = Counter(concept for text in early_texts for concept in ai_concept_matches(text))
+    late_concepts = Counter(concept for text in late_texts for concept in ai_concept_matches(text))
+    concept_gains = [concept for concept, _count in late_concepts.most_common() if late_concepts[concept] > early_concepts.get(concept, 0)]
+    summary_points: list[str] = []
+    if emerging_terms:
+        summary_points.append(f"Later windows emphasize terms like {', '.join(emerging_terms[:4])}.")
+    if fading_terms:
+        summary_points.append(f"Earlier windows leaned more on {', '.join(fading_terms[:4])}.")
+    if concept_gains:
+        summary_points.append(f"AI-related emphasis increased for concepts such as {', '.join(concept_gains[:4])}.")
+    if not summary_points:
+        summary_points.append("Requirement language is broadly stable across the selected window, with no strong lexical shift.")
+    evidence_rows = rows[:limit_evidence]
+    return {
+        "entity": "role_requirement_change_summary",
+        "schema": schema,
+        "filters": {"query": query, "month_from": month_from, "month_to": month_to, "limit_evidence": limit_evidence},
+        "match_found": True,
+        "early_months": sorted(early_months),
+        "late_months": sorted(late_months),
+        "summary_points": summary_points,
+        "evidence_rows": evidence_rows,
+    }
