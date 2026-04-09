@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.posts (
     created_at_utc TIMESTAMPTZ NOT NULL,
     source_payload_json JSONB NOT NULL,
     post_search_tsv tsvector GENERATED ALWAYS AS (
-        to_tsvector('english', coalesce(post_text_clean, ''))
+        to_tsvector('english'::regconfig, coalesce(post_text_clean, ''))
     ) STORED
 );
 
@@ -94,16 +94,13 @@ CREATE TABLE IF NOT EXISTS __SCHEMA__.roles (
     source_payload_json JSONB NOT NULL,
     role_search_tsv tsvector GENERATED ALWAYS AS (
         to_tsvector(
-            'english',
-            concat_ws(
-                ' ',
-                coalesce(role_title_observed, ''),
-                coalesce(role_title_normalized, ''),
-                coalesce(role_family, ''),
-                coalesce(skills_text, ''),
-                coalesce(requirements_text, ''),
-                coalesce(responsibilities_text, '')
-            )
+            'english'::regconfig,
+            coalesce(role_title_observed, '')
+            || ' ' || coalesce(role_title_normalized, '')
+            || ' ' || coalesce(role_family, '')
+            || ' ' || coalesce(skills_text, '')
+            || ' ' || coalesce(requirements_text, '')
+            || ' ' || coalesce(responsibilities_text, '')
         )
     ) STORED
 );
