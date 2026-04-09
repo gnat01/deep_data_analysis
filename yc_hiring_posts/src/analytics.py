@@ -98,6 +98,10 @@ def materialize_core_analytics() -> dict[str, Path]:
     product_theme_rows = company_building_themes_by_month(posts, company_name_by_id, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
     company_semantic_rows = company_semantic_spread(posts, company_name_by_id, month_by_thread_id)
+    company_role_rows = company_role_semantic_spread(roles, posts, company_name_by_id, month_by_thread_id)
+    post_vs_role_rows = company_post_vs_role_spread(company_semantic_rows, company_role_rows)
+    company_drift_rows, company_drift_monthly_rows = company_embedding_drift(posts, company_name_by_id, month_by_thread_id)
+    changed_company_rows = changed_companies_ranked(post_vs_role_rows, company_drift_rows)
 
     outputs = {
         "company_posting_counts_by_month": write_csv(
@@ -144,11 +148,32 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "company_semantic_spread.csv",
             company_semantic_rows,
         ),
+        "company_role_semantic_spread": write_csv(
+            analytics_dir / "company_role_semantic_spread.csv",
+            company_role_rows,
+        ),
+        "company_post_vs_role_spread": write_csv(
+            analytics_dir / "company_post_vs_role_spread.csv",
+            post_vs_role_rows,
+        ),
+        "company_embedding_drift": write_csv(
+            analytics_dir / "company_embedding_drift.csv",
+            company_drift_rows,
+        ),
+        "company_embedding_drift_monthly": write_csv(
+            analytics_dir / "company_embedding_drift_monthly.csv",
+            company_drift_monthly_rows,
+        ),
+        "changed_companies_ranked": write_csv(
+            analytics_dir / "changed_companies_ranked.csv",
+            changed_company_rows,
+        ),
     }
     visual_outputs = write_analytics_visuals(
         visuals_dir=visuals_dir,
         posts=posts,
         company_name_by_id=company_name_by_id,
+        month_by_thread_id=month_by_thread_id,
         company_posting_rows=company_posting_rows,
         company_summary_rows=company_summary_rows,
         remote_rows=remote_rows,
@@ -160,6 +185,11 @@ def materialize_core_analytics() -> dict[str, Path]:
         product_theme_rows=product_theme_rows,
         recurring_rows=recurring_rows,
         company_semantic_rows=company_semantic_rows,
+        company_role_rows=company_role_rows,
+        post_vs_role_rows=post_vs_role_rows,
+        company_drift_rows=company_drift_rows,
+        company_drift_monthly_rows=company_drift_monthly_rows,
+        changed_company_rows=changed_company_rows,
     )
     outputs.update(visual_outputs)
     outputs["manifest"] = write_manifest(analytics_dir / "analytics_manifest.json", outputs)
@@ -580,6 +610,300 @@ def company_semantic_spread(
     return rows
 
 
+def company_role_semantic_spread(
+    roles: list[dict[str, object]],
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+    top_n: int = 100,
+) -> list[dict[str, object]]:
+    """Rank companies by semantic spread across extracted role text."""
+
+    post_by_id = {str(post["post_id"]): post for post in posts if post.get("is_hiring_post")}
+    grouped_rows: dict[str, list[str]] = defaultdict(list)
+    company_name_lookup: dict[str, str] = {}
+    company_id_lookup: dict[str, str | None] = {}
+    month_sets: dict[str, set[str]] = defaultdict(set)
+
+    for role in roles:
+        post = post_by_id.get(str(role.get("post_id")))
+        if post is None:
+            continue
+        company_id = role.get("company_id") or post.get("company_id")
+        observed_name = str(post.get("company_name_observed") or "").strip()
+        company_name = company_name_by_id.get(company_id) if company_id else None
+        if not company_name:
+            company_name = observed_name
+        if not company_name:
+            continue
+        company_key = str(company_id) if company_id else f"observed:{company_name.lower()}"
+        text = role_text_from_row(role)
+        if not text.strip():
+            continue
+        grouped_rows[company_key].append(text)
+        company_name_lookup[company_key] = company_name
+        company_id_lookup[company_key] = str(company_id) if company_id else None
+        month_sets[company_key].add(month_by_thread_id[str(post["thread_id"])])
+
+    ranked_keys = sorted(
+        grouped_rows,
+        key=lambda key: (-len(grouped_rows[key]), company_name_lookup.get(key, key).lower()),
+    )[:top_n]
+
+    rows: list[dict[str, object]] = []
+    for company_key in ranked_keys:
+        texts = grouped_rows[company_key]
+        metrics = semantic_angle_metrics(texts)
+        months = sorted(month_sets.get(company_key, set()))
+        rows.append(
+            {
+                "company_key": company_key,
+                "company_id": company_id_lookup.get(company_key),
+                "company_name": company_name_lookup.get(company_key),
+                "role_count": len(texts),
+                "role_pair_count": metrics["pair_count"],
+                "role_exact_reuse_share": metrics["exact_reuse_share"],
+                "role_mean_pairwise_cosine": metrics["mean_pairwise_cosine"],
+                "role_mean_angle_deg": metrics["mean_pairwise_angle_deg"],
+                "role_median_angle_deg": metrics["median_pairwise_angle_deg"],
+                "role_p90_angle_deg": metrics["p90_pairwise_angle_deg"],
+                "role_max_angle_deg": metrics["max_pairwise_angle_deg"],
+                "active_month_count": len(months),
+            }
+        )
+    return rows
+
+
+def company_post_vs_role_spread(
+    company_semantic_rows: list[dict[str, object]],
+    company_role_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Join company post spread and role spread into one comparison table."""
+
+    role_by_key = {str(row["company_key"]): row for row in company_role_rows}
+    rows: list[dict[str, object]] = []
+    for post_row in company_semantic_rows:
+        company_key = str(post_row["company_key"])
+        role_row = role_by_key.get(company_key)
+        if role_row is None:
+            continue
+        post_mean = float(post_row["mean_pairwise_angle_deg"])
+        role_mean = float(role_row["role_mean_angle_deg"])
+        rows.append(
+            {
+                "company_key": company_key,
+                "company_id": post_row.get("company_id"),
+                "company_name": post_row.get("company_name"),
+                "post_count": post_row.get("post_count"),
+                "role_count": role_row.get("role_count"),
+                "post_mean_angle_deg": post_mean,
+                "role_mean_angle_deg": role_mean,
+                "post_median_angle_deg": post_row.get("median_pairwise_angle_deg"),
+                "role_median_angle_deg": role_row.get("role_median_angle_deg"),
+                "post_p90_angle_deg": post_row.get("p90_pairwise_angle_deg"),
+                "role_p90_angle_deg": role_row.get("role_p90_angle_deg"),
+                "spread_gap_deg": round(post_mean - role_mean, 2),
+                "spread_ratio": round(post_mean / role_mean, 3) if role_mean else None,
+                "post_exact_reuse_share": post_row.get("exact_reuse_share"),
+                "role_exact_reuse_share": role_row.get("role_exact_reuse_share"),
+            }
+        )
+    return sorted(rows, key=lambda row: (-float(row["spread_gap_deg"]), -(float(row["post_mean_angle_deg"]))))
+
+
+def company_embedding_drift(
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+    top_n: int = 80,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Measure month-by-month embedding drift for recurring companies."""
+
+    grouped_posts: dict[str, list[dict[str, str]]] = defaultdict(list)
+    company_name_lookup: dict[str, str] = {}
+    company_id_lookup: dict[str, str | None] = {}
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        company_id = post.get("company_id")
+        observed_name = str(post.get("company_name_observed") or "").strip()
+        company_name = company_name_by_id.get(company_id) if company_id else None
+        if not company_name:
+            company_name = observed_name
+        if not company_name:
+            continue
+        company_key = str(company_id) if company_id else f"observed:{company_name.lower()}"
+        grouped_posts[company_key].append(
+            {
+                "post_id": str(post["post_id"]),
+                "thread_month": month_by_thread_id[str(post["thread_id"])],
+                "text": str(post.get("post_text_clean") or "").strip(),
+            }
+        )
+        company_name_lookup[company_key] = company_name
+        company_id_lookup[company_key] = str(company_id) if company_id else None
+
+    ranked_keys = sorted(
+        grouped_posts,
+        key=lambda key: (-len(grouped_posts[key]), company_name_lookup.get(key, key).lower()),
+    )[:top_n]
+
+    summary_rows: list[dict[str, object]] = []
+    monthly_rows: list[dict[str, object]] = []
+    for company_key in ranked_keys:
+        company_posts = sorted(grouped_posts[company_key], key=lambda row: (row["thread_month"], row["post_id"]))
+        texts = [row["text"] for row in company_posts if row["text"]]
+        if len(texts) < 2:
+            continue
+        embedding_payload = company_projection_payload(texts)
+        centroid_rows = company_month_centroid_rows(company_posts, embedding_payload["embeddings"])
+        if len(centroid_rows) < 2:
+            continue
+        for row in centroid_rows:
+            monthly_rows.append(
+                {
+                    "company_key": company_key,
+                    "company_id": company_id_lookup.get(company_key),
+                    "company_name": company_name_lookup.get(company_key),
+                    **row,
+                }
+            )
+        summary_rows.append(
+            {
+                "company_key": company_key,
+                "company_id": company_id_lookup.get(company_key),
+                "company_name": company_name_lookup.get(company_key),
+                "post_count": len(company_posts),
+                "active_month_count": len(centroid_rows),
+                "mean_angle_from_first_deg": round(mean([float(row["angle_from_first_deg"]) for row in centroid_rows]), 2),
+                "mean_angle_from_previous_deg": round(
+                    mean([float(row["angle_from_previous_deg"]) for row in centroid_rows if row["angle_from_previous_deg"] is not None]),
+                    2,
+                ),
+                "max_angle_from_first_deg": round(max(float(row["angle_from_first_deg"]) for row in centroid_rows), 2),
+                "final_angle_from_first_deg": round(float(centroid_rows[-1]["angle_from_first_deg"]), 2),
+                "drift_score": round(
+                    mean([float(row["angle_from_first_deg"]) for row in centroid_rows])
+                    + mean([float(row["angle_from_previous_deg"]) for row in centroid_rows if row["angle_from_previous_deg"] is not None]),
+                    2,
+                ),
+            }
+        )
+    return (
+        sorted(summary_rows, key=lambda row: (-float(row["drift_score"]), -(int(row["post_count"])))),
+        sorted(monthly_rows, key=lambda row: (row["company_name"], row["thread_month"])),
+    )
+
+
+def company_projection_payload(texts: list[str]) -> dict[str, object]:
+    """Return normalized embeddings plus a 2D projection for one company's posts."""
+
+    import numpy as np
+    from sklearn.decomposition import TruncatedSVD
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.manifold import TSNE
+    from sklearn.preprocessing import normalize
+
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=4000)
+    matrix = vectorizer.fit_transform(texts)
+    if matrix.shape[1] == 0:
+        dense = np.zeros((len(texts), 2), dtype=float)
+    else:
+        n_components = max(2, min(20, matrix.shape[0] - 1, matrix.shape[1] - 1))
+        if n_components >= 2:
+            dense = TruncatedSVD(n_components=n_components, random_state=42).fit_transform(matrix)
+        else:
+            dense = matrix.toarray()
+    dense = normalize(dense) if len(dense) else dense
+    if len(texts) >= 3:
+        perplexity = max(2, min(8, len(texts) - 1))
+        projection = TSNE(
+            n_components=2,
+            random_state=42,
+            init="random",
+            learning_rate="auto",
+            perplexity=perplexity,
+        ).fit_transform(dense)
+    elif len(texts) == 2:
+        projection = np.array([[0.0, 0.0], [1.0, 0.0]])
+    else:
+        projection = np.zeros((len(texts), 2), dtype=float)
+    return {"embeddings": dense, "projection": projection}
+
+
+def company_month_centroid_rows(company_posts: list[dict[str, str]], embeddings) -> list[dict[str, object]]:
+    """Summarize month centroids and drift angles for one company's post embeddings."""
+
+    import numpy as np
+
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for index, row in enumerate(company_posts):
+        grouped[row["thread_month"]].append(index)
+    ordered_months = sorted(grouped)
+    centroid_rows: list[dict[str, object]] = []
+    first_centroid = None
+    previous_centroid = None
+    for month in ordered_months:
+        indices = grouped[month]
+        month_vectors = embeddings[indices]
+        centroid = month_vectors.mean(axis=0)
+        centroid = normalize_vector(centroid)
+        within_angles = []
+        for vector in month_vectors:
+            within_angles.append(angle_between_vectors(normalize_vector(vector), centroid))
+        angle_from_first = 0.0 if first_centroid is None else angle_between_vectors(centroid, first_centroid)
+        angle_from_previous = None if previous_centroid is None else angle_between_vectors(centroid, previous_centroid)
+        centroid_rows.append(
+            {
+                "thread_month": month,
+                "month_post_count": len(indices),
+                "within_month_mean_angle_deg": round(mean(within_angles), 2),
+                "angle_from_first_deg": round(angle_from_first, 2),
+                "angle_from_previous_deg": None if angle_from_previous is None else round(angle_from_previous, 2),
+            }
+        )
+        if first_centroid is None:
+            first_centroid = centroid
+        previous_centroid = centroid
+    return centroid_rows
+
+
+def changed_companies_ranked(
+    post_vs_role_rows: list[dict[str, object]],
+    company_drift_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Rank companies by overall change using spread and drift metrics."""
+
+    drift_by_key = {str(row["company_key"]): row for row in company_drift_rows}
+    rows: list[dict[str, object]] = []
+    for row in post_vs_role_rows:
+        company_key = str(row["company_key"])
+        drift = drift_by_key.get(company_key)
+        if drift is None:
+            continue
+        changed_score = (
+            float(row["post_mean_angle_deg"]) * 0.35
+            + float(row["role_mean_angle_deg"]) * 0.25
+            + max(float(row["spread_gap_deg"]), 0.0) * 0.15
+            + float(drift["drift_score"]) * 0.25
+        )
+        rows.append(
+            {
+                "company_key": company_key,
+                "company_id": row.get("company_id"),
+                "company_name": row.get("company_name"),
+                "post_count": row.get("post_count"),
+                "role_count": row.get("role_count"),
+                "post_mean_angle_deg": row.get("post_mean_angle_deg"),
+                "role_mean_angle_deg": row.get("role_mean_angle_deg"),
+                "spread_gap_deg": row.get("spread_gap_deg"),
+                "drift_score": drift.get("drift_score"),
+                "changed_score": round(changed_score, 2),
+            }
+        )
+    return sorted(rows, key=lambda row: (-float(row["changed_score"]), -(int(row["post_count"] or 0))))
+
+
 def semantic_angle_metrics(texts: list[str]) -> dict[str, float | int]:
     """Summarize the pairwise semantic spread of a company's post texts."""
 
@@ -630,6 +954,35 @@ def pairwise_semantic_geometry(texts: list[str]) -> tuple[list[float], list[floa
     return angle_values, cosine_values
 
 
+def role_text_from_row(role: dict[str, object]) -> str:
+    parts = [
+        str(role.get("role_title_observed") or ""),
+        str(role.get("role_title_normalized") or ""),
+        str(role.get("role_family") or ""),
+        str(role.get("seniority") or ""),
+        str(role.get("skills_text") or ""),
+        str(role.get("requirements_text") or ""),
+        str(role.get("responsibilities_text") or ""),
+    ]
+    return "\n".join(part for part in parts if part.strip())
+
+
+def normalize_vector(vector):
+    import numpy as np
+
+    norm = float(np.linalg.norm(vector))
+    if norm == 0.0:
+        return vector
+    return vector / norm
+
+
+def angle_between_vectors(left, right) -> float:
+    import numpy as np
+
+    cosine = float(np.clip(np.dot(left, right), -1.0, 1.0))
+    return float(np.degrees(np.arccos(cosine)))
+
+
 def mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
@@ -676,6 +1029,7 @@ def write_analytics_visuals(
     visuals_dir: Path,
     posts: list[dict[str, object]],
     company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
     company_posting_rows: list[dict[str, object]],
     company_summary_rows: list[dict[str, object]],
     remote_rows: list[dict[str, object]],
@@ -687,6 +1041,11 @@ def write_analytics_visuals(
     product_theme_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
     company_semantic_rows: list[dict[str, object]],
+    company_role_rows: list[dict[str, object]],
+    post_vs_role_rows: list[dict[str, object]],
+    company_drift_rows: list[dict[str, object]],
+    company_drift_monthly_rows: list[dict[str, object]],
+    changed_company_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
     """Write a polished visual for each core analytical output."""
 
@@ -739,6 +1098,15 @@ def write_analytics_visuals(
         "company_semantic_spread_visual": plot_company_semantic_spread(
             plt, pd, visuals_dir / "company_semantic_spread.png", company_semantic_rows
         ),
+        "company_role_semantic_spread_visual": plot_company_role_semantic_spread(
+            plt, pd, visuals_dir / "company_role_semantic_spread.png", company_role_rows
+        ),
+        "company_post_vs_role_spread_visual": plot_company_post_vs_role_spread(
+            plt, pd, visuals_dir / "company_post_vs_role_spread.png", post_vs_role_rows
+        ),
+        "changed_companies_ranked_visual": plot_changed_companies_ranked(
+            plt, pd, visuals_dir / "changed_companies_ranked.png", changed_company_rows
+        ),
     }
     outputs.update(
         plot_company_variation_histograms(
@@ -748,6 +1116,18 @@ def write_analytics_visuals(
             posts,
             company_name_by_id,
             company_semantic_rows,
+        )
+    )
+    outputs.update(
+        plot_company_drift_projection_bundle(
+            plt,
+            pd,
+            visuals_dir / "company_drift_projections",
+            posts,
+            company_name_by_id,
+            month_by_thread_id,
+            company_drift_rows,
+            changed_company_rows,
         )
     )
     outputs.update(
@@ -1512,6 +1892,75 @@ def plot_company_semantic_spread(plt, pd, output_path: Path, rows: list[dict[str
     return output_path
 
 
+def plot_company_role_semantic_spread(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the companies with the widest role-level semantic spread."""
+
+    frame = pd.DataFrame(rows)
+    top = (
+        frame.sort_values(["role_mean_angle_deg", "role_count", "company_name"], ascending=[False, False, True])
+        .head(20)
+        .copy()
+    )
+    fig, ax = plt.subplots(figsize=(13, 8.5), constrained_layout=True)
+    ax.barh(top["company_name"], top["role_mean_angle_deg"], color="#5b8c5a", edgecolor="#1b1a17")
+    ax.invert_yaxis()
+    ax.set_title("Companies With The Widest Role Spread")
+    ax.set_xlabel("Mean role angle (degrees)")
+    ax.set_ylabel("Company")
+    for index, (_, row) in enumerate(top.iterrows()):
+        ax.text(float(row["role_mean_angle_deg"]) + 0.6, index, f"{float(row['role_mean_angle_deg']):.1f}°", va="center", fontsize=10)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_company_post_vs_role_spread(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot post spread against role spread for companies."""
+
+    frame = pd.DataFrame(rows)
+    fig, ax = plt.subplots(figsize=(11.8, 8.4), constrained_layout=True)
+    scatter = ax.scatter(
+        frame["role_mean_angle_deg"],
+        frame["post_mean_angle_deg"],
+        s=frame["post_count"].astype(float) * 6.0,
+        c=frame["spread_gap_deg"],
+        cmap="coolwarm",
+        alpha=0.82,
+        edgecolors="#1b1a17",
+        linewidths=0.6,
+    )
+    limit = max(frame["role_mean_angle_deg"].max(), frame["post_mean_angle_deg"].max()) + 2.0 if not frame.empty else 1.0
+    ax.plot([0, limit], [0, limit], linestyle="--", linewidth=1.2, color="#8d99ae")
+    ax.set_xlim(0, limit)
+    ax.set_ylim(0, limit)
+    ax.set_title("Post Spread vs Role Spread")
+    ax.set_xlabel("Role mean angle (degrees)")
+    ax.set_ylabel("Post mean angle (degrees)")
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("Spread gap (post - role)")
+    ax.grid(alpha=0.22, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_changed_companies_ranked(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the top changed companies by the combined changed score."""
+
+    frame = pd.DataFrame(rows).head(20).copy()
+    fig, ax = plt.subplots(figsize=(13, 8.5), constrained_layout=True)
+    ax.barh(frame["company_name"], frame["changed_score"], color="#6d597a", edgecolor="#1b1a17")
+    ax.invert_yaxis()
+    ax.set_title("Changed Companies Ranking")
+    ax.set_xlabel("Changed score")
+    ax.set_ylabel("Company")
+    for index, (_, row) in enumerate(frame.iterrows()):
+        ax.text(float(row["changed_score"]) + 0.5, index, f"{float(row['changed_score']):.1f}", va="center", fontsize=10)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
 def plot_company_variation_histograms(
     plt,
     pd,
@@ -1574,6 +2023,155 @@ def plot_company_variation_histograms(
     index_path = output_dir / "README.md"
     index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")
     outputs["company_variation_histograms_index"] = index_path
+    return outputs
+
+
+def plot_company_drift_projection_bundle(
+    plt,
+    pd,
+    output_dir: Path,
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+    company_drift_rows: list[dict[str, object]],
+    changed_company_rows: list[dict[str, object]],
+    top_n: int = 12,
+) -> dict[str, Path]:
+    """Write local PNG and GIF projection artifacts for the top changed companies."""
+
+    import imageio.v2 as imageio
+    import numpy as np
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    top_keys = [str(row["company_key"]) for row in changed_company_rows[:top_n]]
+    outputs: dict[str, Path] = {}
+    index_lines = ["# Company Drift Projections", "", "Static PNGs and animated GIFs for top changed companies.", ""]
+
+    for company_key in top_keys:
+        company_posts = []
+        for post in posts:
+            if not post.get("is_hiring_post"):
+                continue
+            cid = post.get("company_id")
+            observed_name = str(post.get("company_name_observed") or "").strip()
+            cname = company_name_by_id.get(cid) if cid else None
+            if not cname:
+                cname = observed_name
+            if not cname:
+                continue
+            key = str(cid) if cid else f"observed:{cname.lower()}"
+            if key != company_key:
+                continue
+            thread_month = month_by_thread_id.get(str(post["thread_id"]))
+            if not thread_month:
+                continue
+            company_posts.append(
+                {
+                    "thread_month": thread_month,
+                    "text": str(post.get("post_text_clean") or ""),
+                    "post_id": str(post["post_id"]),
+                    "company_name": cname,
+                }
+            )
+        if len(company_posts) < 3:
+            continue
+        company_posts = sorted(company_posts, key=lambda row: (row["thread_month"], row["post_id"]))
+        texts = [row["text"] for row in company_posts]
+        payload = company_projection_payload(texts)
+        coords = payload["projection"]
+        months = [row["thread_month"] for row in company_posts]
+        company_name = company_posts[0]["company_name"]
+        slug = slugify(company_name)
+        png_path = output_dir / f"{slug}.png"
+        gif_path = output_dir / f"{slug}.gif"
+
+        fig, ax = plt.subplots(figsize=(7.2, 6.2), constrained_layout=True)
+        unique_months = sorted(set(months))
+        palette = plt.cm.get_cmap("viridis", len(unique_months))
+        for idx, month in enumerate(unique_months):
+            mask = [value == month for value in months]
+            month_coords = coords[mask]
+            ax.scatter(month_coords[:, 0], month_coords[:, 1], s=58, alpha=0.88, color=palette(idx), label=month, edgecolors="#1b1a17", linewidths=0.4)
+        ax.set_title(f"{company_name}: Projection")
+        ax.set_xlabel("Projection X")
+        ax.set_ylabel("Projection Y")
+        ax.legend(frameon=True, fontsize=8, ncols=2)
+        ax.grid(alpha=0.2, linestyle="--")
+        fig.savefig(png_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+
+        monthly_frame = pd.DataFrame(company_month_centroid_rows(company_posts, payload["embeddings"]))
+        if not monthly_frame.empty:
+            drift_png_path = output_dir / f"{slug}_drift.png"
+            drift_months = monthly_frame["thread_month"].tolist()
+            drift_positions = list(range(len(drift_months)))
+            fig, ax = plt.subplots(figsize=(8.2, 4.8), constrained_layout=True)
+            ax.plot(
+                drift_positions,
+                monthly_frame["angle_from_first_deg"],
+                marker="o",
+                linewidth=2.8,
+                color="#264653",
+                label="From first month",
+            )
+            previous_values = monthly_frame["angle_from_previous_deg"].fillna(0.0).tolist()
+            ax.plot(
+                drift_positions,
+                previous_values,
+                marker="s",
+                linewidth=2.2,
+                linestyle="--",
+                color="#e76f51",
+                label="From previous month",
+            )
+            ax.set_title(f"{company_name}: Drift Over Time")
+            ax.set_xlabel("Thread month")
+            ax.set_ylabel("Angle (degrees)")
+            apply_month_axis(ax, drift_months)
+            ax.legend(frameon=True, loc="upper left")
+            ax.grid(alpha=0.25, linestyle="--")
+            fig.savefig(drift_png_path, dpi=180, bbox_inches="tight")
+            plt.close(fig)
+            outputs[f"company_drift_timeline_{slug}"] = drift_png_path
+
+        frames = []
+        for idx, month in enumerate(unique_months):
+            fig, ax = plt.subplots(figsize=(7.2, 6.2), constrained_layout=True)
+            for past_idx, past_month in enumerate(unique_months[: idx + 1]):
+                mask = [value == past_month for value in months]
+                month_coords = coords[mask]
+                ax.scatter(
+                    month_coords[:, 0],
+                    month_coords[:, 1],
+                    s=58,
+                    alpha=0.88,
+                    color=palette(past_idx),
+                    label=past_month,
+                    edgecolors="#1b1a17",
+                    linewidths=0.4,
+                )
+            ax.set_title(f"{company_name}: Through {month}")
+            ax.set_xlabel("Projection X")
+            ax.set_ylabel("Projection Y")
+            ax.legend(frameon=True, fontsize=8, ncols=2)
+            ax.grid(alpha=0.2, linestyle="--")
+            fig.canvas.draw()
+            frame = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+            frame = frame.reshape(fig.canvas.get_width_height()[::-1] + (4,))
+            frames.append(frame)
+            plt.close(fig)
+        imageio.mimsave(gif_path, frames, duration=0.9)
+
+        outputs[f"company_drift_projection_{slug}"] = png_path
+        outputs[f"company_drift_projection_gif_{slug}"] = gif_path
+        if monthly_frame.empty:
+            index_lines.append(f"- `{company_name}`: `{png_path.name}`, `{gif_path.name}`")
+        else:
+            index_lines.append(f"- `{company_name}`: `{png_path.name}`, `{gif_path.name}`, `{slug}_drift.png`")
+
+    index_path = output_dir / "README.md"
+    index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+    outputs["company_drift_projection_index"] = index_path
     return outputs
 
 

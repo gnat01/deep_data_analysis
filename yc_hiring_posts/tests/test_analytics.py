@@ -38,6 +38,11 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["company_building_themes_by_month"].exists()
     assert outputs["recurring_company_hiring_patterns"].exists()
     assert outputs["company_semantic_spread"].exists()
+    assert outputs["company_role_semantic_spread"].exists()
+    assert outputs["company_post_vs_role_spread"].exists()
+    assert outputs["company_embedding_drift"].exists()
+    assert outputs["company_embedding_drift_monthly"].exists()
+    assert outputs["changed_companies_ranked"].exists()
     assert outputs["company_posting_counts_visual"].exists()
     assert outputs["company_summary_visual"].exists()
     assert outputs["remote_status_trends_visual"].exists()
@@ -57,7 +62,11 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["company_building_themes_timeseries_visual"].exists()
     assert outputs["recurring_company_hiring_patterns_visual"].exists()
     assert outputs["company_semantic_spread_visual"].exists()
+    assert outputs["company_role_semantic_spread_visual"].exists()
+    assert outputs["company_post_vs_role_spread_visual"].exists()
+    assert outputs["changed_companies_ranked_visual"].exists()
     assert outputs["company_variation_histograms_index"].exists()
+    assert outputs["company_drift_projection_index"].exists()
     assert outputs["visual_index"].exists()
     assert outputs["manifest"].exists()
 
@@ -107,6 +116,57 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         "p90_pairwise_angle_deg",
         "exact_reuse_share",
     } <= set(semantic_rows[0].keys())
+
+    with outputs["company_role_semantic_spread"].open(encoding="utf-8", newline="") as handle:
+        role_spread_rows = list(csv.DictReader(handle))
+    assert role_spread_rows
+    assert {
+        "company_name",
+        "role_count",
+        "role_mean_angle_deg",
+        "role_p90_angle_deg",
+    } <= set(role_spread_rows[0].keys())
+
+    with outputs["company_post_vs_role_spread"].open(encoding="utf-8", newline="") as handle:
+        spread_comparison_rows = list(csv.DictReader(handle))
+    assert spread_comparison_rows
+    assert {
+        "company_name",
+        "post_mean_angle_deg",
+        "role_mean_angle_deg",
+        "spread_gap_deg",
+        "spread_ratio",
+    } <= set(spread_comparison_rows[0].keys())
+
+    with outputs["company_embedding_drift"].open(encoding="utf-8", newline="") as handle:
+        drift_rows = list(csv.DictReader(handle))
+    assert drift_rows
+    assert {
+        "company_name",
+        "drift_score",
+        "final_angle_from_first_deg",
+    } <= set(drift_rows[0].keys())
+
+    with outputs["company_embedding_drift_monthly"].open(encoding="utf-8", newline="") as handle:
+        drift_monthly_rows = list(csv.DictReader(handle))
+    assert drift_monthly_rows
+    assert {
+        "company_name",
+        "thread_month",
+        "angle_from_first_deg",
+        "within_month_mean_angle_deg",
+    } <= set(drift_monthly_rows[0].keys())
+
+    with outputs["changed_companies_ranked"].open(encoding="utf-8", newline="") as handle:
+        changed_rows = list(csv.DictReader(handle))
+    assert changed_rows
+    assert {
+        "company_name",
+        "changed_score",
+        "drift_score",
+        "post_mean_angle_deg",
+        "role_mean_angle_deg",
+    } <= set(changed_rows[0].keys())
 
 
 def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:

@@ -55,14 +55,17 @@ Success criteria:
 
 Deliverables:
 
-- repeated-post detection
-- wording-change analysis for recurring company posts
-- compensation comparison across similar roles over time
+- company role-text spread
+- post-vs-role spread comparison
+- temporal embedding drift metrics
+- changed-company ranking
+- local projection PNGs / GIFs
 
 Success criteria:
 
-- likely duplicates can be reviewed with evidence
-- comparisons can separate exact repeats from materially changed postings
+- variation can be separated into role-driven vs broader narrative-driven change
+- recurring companies can be ranked by measurable change rather than vague impression
+- selected companies can be inspected through both metrics and visuals
 
 ## Phase 5: NLP And Query Layer
 

@@ -1,61 +1,30 @@
 # Step 17
 
-Step 17 should focus on **repeated-post detection and company-level change analysis**.
+Step 17 should focus on **company-level change analysis**, building on the company-variation groundwork already present in Step 16.
 
 ## Goal
 
-Move from descriptive analytics into measurable sameness vs change:
+Move from descriptive company variation into a clearer explanation of **why** companies differ:
 
-- which companies keep posting nearly the same thing
-- which companies materially changed their hiring narrative
-- whether that change is driven by roles, or by broader company framing
+- which companies hire for a wide variety of roles
+- which companies mostly keep roles stable but change the surrounding narrative
+- which companies materially drift in their hiring language over time
+- which companies should rank highest as genuinely changed companies
 
 ## Core Outputs
 
-### 1. Repeated-post detection
+### 1. Company role-text spread
 
-For recurring companies, compute:
-
-- exact text reuse
-- similarity to previous post
-- similarity to closest historical post
-
-Target outputs:
-
-- `company_post_reuse.csv`
-- `company_post_similarity.csv`
-
-### 2. Company post-text spread
-
-Formalize the current company-variation work as a Step 17 artifact:
-
-- pairwise cosine similarity
-- pairwise angle distribution
-- mean / median / p90 / max angle
-- exact reuse share
-
-Target outputs:
-
-- `company_semantic_spread.csv`
-- static histogram bundle
-- Streamlit company-variation tab
-
-### 3. Company role-text spread
-
-For each company, compute the same spread metrics on **role text** rather than full post text.
+For each recurring company, compute semantic spread on **role text** rather than full post text.
 
 Target outputs:
 
 - `company_role_semantic_spread.csv`
+- role-spread ranking PNG
 
-This will help separate:
+### 2. Post-vs-role spread comparison
 
-- companies that truly hire across varied roles
-- companies whose role demand is stable but whose narrative changed
-
-### 4. Post-vs-role spread comparison
-
-Join post spread and role spread into one comparison layer.
+Join company post spread and role spread side by side.
 
 Fields should include:
 
@@ -71,66 +40,85 @@ Fields should include:
 Target outputs:
 
 - `company_post_vs_role_spread.csv`
-- scatter plot of post spread vs role spread
+- scatter plot PNG
 
 Interpretation:
 
 - both low: highly repetitive company
-- both high: company genuinely hires across varied themes/roles
+- both high: company genuinely hires across varied themes and roles
 - post high, role low: company framing changed more than actual role demand
 - role high, post low: compact company template but varied role mix
 
-### 5. Structured change deltas
+### 3. Temporal embedding drift
 
-For recurring companies, measure changes in structured fields:
+For recurring companies, measure how company post embeddings move over time.
 
-- role-family changes
-- AI-concept changes
-- company-building-theme changes
-- remote-status changes
-- compensation changes
+This should include:
+
+- month-by-month centroid angle from the first month
+- month-by-month centroid angle from the immediately previous month
+- within-month spread
+- total drift score per company
 
 Target outputs:
 
-- `company_post_changes.csv`
-- `company_change_summary.csv`
+- `company_embedding_drift.csv`
+- per-company time-series PNGs
+- per-company animated projection GIFs
 
-### 6. Changed-companies ranking
+Projection visuals should use:
 
-Rank companies by overall narrative change, combining:
+- a stable 2D projection per selected company
+- month coloring / month progression
+- local PNG and GIF copies, not Streamlit-only views
 
-- semantic spread
-- low exact reuse
-- structured deltas
+### 4. Changed-companies ranking
+
+Rank companies by overall change, combining:
+
+- post spread
 - role spread
+- post-vs-role spread gap
+- temporal embedding drift
 
-Target output:
+Target outputs:
 
 - `changed_companies_ranked.csv`
+- changed-company ranking PNG
 
 ## Streamlit
 
-Add a Step 17-focused surface to the app for:
+Add a Step 17-focused tab to the app for:
 
-- repeated companies
-- changed companies
-- post spread vs role spread
-- selected-company similarity/change evidence
+- post-vs-role spread comparison
+- changed-companies ranking
+- selected-company drift metrics
+- selected-company projection / time evolution
+
+## Local Artifacts
+
+Step 17 should write local copies of:
+
+- CSV outputs
+- comparison PNGs
+- company-level PNGs
+- company-level GIFs
+
+These should sit under `data/processed/analytics/` and `data/processed/analytics/visuals/`.
 
 ## Recommended Build Order
 
-1. exact and near-duplicate reuse
-2. previous-post and closest-historical similarity
-3. role-level spread by company
-4. post-vs-role spread comparison
-5. structured change deltas
-6. changed-company ranking
-7. Streamlit Step 17 views
+1. company role-text spread
+2. post-vs-role spread comparison
+3. temporal embedding drift
+4. changed-companies ranking
+5. static PNG / GIF bundle
+6. Streamlit Step 17 tab
 
 ## Success Criteria
 
 Step 17 is complete when we can answer:
 
-- which companies are highly repetitive
-- which companies changed meaningfully
-- whether that change came from role diversity or broader narrative shifts
+- whether company variation is mostly role-driven or broader than roles
+- which companies changed most over time
+- how that change looks in both metrics and visuals

@@ -231,16 +231,18 @@ Once the structured tables are stable, produce recurring outputs for:
 
 These outputs should answer the first generation of business questions directly from tables.
 
-### 17. Add Repeated-Post Detection
+### 17. Add Company Change Analysis
 
-Start simple.
+Build on the company-variation groundwork from Step 16 and move into measurable change.
 
-Use deterministic or conservative similarity approaches first to find:
+This stage should produce:
 
-- repeated or near-duplicate posts by the same company
-- recurring role families across adjacent months
-
-This stage should produce reviewable evidence, not black-box claims.
+- company role-text spread
+- post-vs-role spread comparison
+- temporal embedding drift metrics
+- changed-company ranking
+- local PNG and GIF artifacts
+- interactive change-analysis views in the Streamlit app
 
 ### 18. Add Compensation Parsing
 

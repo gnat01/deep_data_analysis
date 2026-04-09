@@ -1,6 +1,6 @@
 # How To Run
 
-This document explains exactly how to run **Steps 4 through 16** from the parent project directory:
+This document explains exactly how to run **Steps 4 through 17** from the parent project directory:
 
 ```bash
 cd /Users/gn/work/learn/python/deep_data_analysis/yc_hiring_posts
@@ -351,8 +351,44 @@ data/processed/analytics/visuals/company_building_themes_2025.png
 data/processed/analytics/visuals/company_building_themes_2026.png
 data/processed/analytics/visuals/company_building_themes_timeseries.png
 data/processed/analytics/visuals/company_semantic_spread.png
+data/processed/analytics/visuals/company_role_semantic_spread.png
+data/processed/analytics/visuals/company_post_vs_role_spread.png
+data/processed/analytics/visuals/changed_companies_ranked.png
 data/processed/analytics/visuals/company_variation_histograms/
+data/processed/analytics/visuals/company_drift_projections/
 data/processed/analytics/visuals/recurring_company_hiring_patterns.png
+```
+
+## Step 17: Company Change Analysis
+
+Step 17 is produced by the same analytics materialization command:
+
+```bash
+PYTHONPATH=src python src/cli.py materialize-core-analytics
+```
+
+It adds:
+
+```text
+data/processed/analytics/company_role_semantic_spread.csv
+data/processed/analytics/company_post_vs_role_spread.csv
+data/processed/analytics/company_embedding_drift.csv
+data/processed/analytics/company_embedding_drift_monthly.csv
+data/processed/analytics/changed_companies_ranked.csv
+data/processed/analytics/visuals/company_role_semantic_spread.png
+data/processed/analytics/visuals/company_post_vs_role_spread.png
+data/processed/analytics/visuals/changed_companies_ranked.png
+data/processed/analytics/visuals/company_drift_projections/
+```
+
+Inspect the outputs with:
+
+```bash
+sed -n '1,10p' data/processed/analytics/company_role_semantic_spread.csv
+sed -n '1,10p' data/processed/analytics/company_post_vs_role_spread.csv
+sed -n '1,10p' data/processed/analytics/company_embedding_drift.csv
+sed -n '1,10p' data/processed/analytics/changed_companies_ranked.csv
+ls data/processed/analytics/visuals/company_drift_projections
 ```
 
 ## Interactive Explorer
@@ -379,12 +415,14 @@ It then shows:
 - AI concepts by role family
 - a what-companies-are-building summary
 - a `Company Variation` tab with semantic spread metrics, pairwise-angle histograms, and company-level theme terms
+- a `Change Analysis` tab with post-vs-role spread, changed-company ranking, company drift, and company projection views
 - a searchable post preview table
 
 Static histogram copies are also written locally under:
 
 ```text
 data/processed/analytics/visuals/company_variation_histograms/
+data/processed/analytics/visuals/company_drift_projections/
 ```
 
 ## Recommended End-To-End Order For One New Month

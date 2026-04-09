@@ -11,7 +11,20 @@ import seaborn as sns
 import streamlit as st
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-from analytics import AI_CONCEPT_PATTERNS, PRODUCT_THEME_PATTERNS, pairwise_semantic_geometry, semantic_angle_metrics
+from analytics import (
+    AI_CONCEPT_PATTERNS,
+    PRODUCT_THEME_PATTERNS,
+    changed_companies_ranked,
+    company_embedding_drift,
+    company_month_centroid_rows,
+    company_post_vs_role_spread,
+    company_projection_payload,
+    company_role_semantic_spread,
+    company_semantic_spread,
+    pairwise_semantic_geometry,
+    semantic_angle_metrics,
+    slugify,
+)
 from storage import processed_data_dir
 
 
@@ -554,6 +567,231 @@ def company_angle_histogram(company_posts: pd.DataFrame):
     return fig
 
 
+def change_analysis_frames(
+    filtered_posts: pd.DataFrame,
+    filtered_roles: pd.DataFrame,
+    companies: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if filtered_posts.empty or filtered_roles.empty:
+        empty_comparison = pd.DataFrame(
+            columns=[
+                "company_key",
+                "company_id",
+                "company_name",
+                "post_count",
+                "role_count",
+                "post_mean_angle_deg",
+                "role_mean_angle_deg",
+                "spread_gap_deg",
+                "spread_ratio",
+            ]
+        )
+        empty_drift = pd.DataFrame(
+            columns=[
+                "company_key",
+                "company_id",
+                "company_name",
+                "post_count",
+                "active_month_count",
+                "mean_angle_from_first_deg",
+                "mean_angle_from_previous_deg",
+                "max_angle_from_first_deg",
+                "final_angle_from_first_deg",
+                "drift_score",
+            ]
+        )
+        empty_drift_monthly = pd.DataFrame(
+            columns=[
+                "company_key",
+                "company_id",
+                "company_name",
+                "thread_month",
+                "month_post_count",
+                "within_month_mean_angle_deg",
+                "angle_from_first_deg",
+                "angle_from_previous_deg",
+            ]
+        )
+        return empty_comparison, empty_drift, empty_drift_monthly, empty_drift
+
+    company_name_by_id = dict(zip(companies["company_id"], companies["company_name_observed_preferred"], strict=False))
+    month_by_thread_id = dict(zip(filtered_posts["thread_id"].astype(str), filtered_posts["thread_month"].astype(str), strict=False))
+    post_rows = filtered_posts.to_dict(orient="records")
+    role_rows = filtered_roles.to_dict(orient="records")
+    semantic_rows = company_semantic_spread(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
+    role_spread_rows = company_role_semantic_spread(role_rows, post_rows, company_name_by_id, month_by_thread_id, top_n=100)
+    comparison_rows = company_post_vs_role_spread(semantic_rows, role_spread_rows)
+    drift_rows, drift_monthly_rows = company_embedding_drift(post_rows, company_name_by_id, month_by_thread_id, top_n=100)
+    changed_rows = changed_companies_ranked(comparison_rows, drift_rows)
+    return (
+        pd.DataFrame(comparison_rows),
+        pd.DataFrame(drift_rows),
+        pd.DataFrame(drift_monthly_rows),
+        pd.DataFrame(changed_rows),
+    )
+
+
+def post_vs_role_scatter(frame: pd.DataFrame):
+    if frame.empty:
+        return None
+    fig, ax = plt.subplots(figsize=(11.8, 7.8))
+    scatter = ax.scatter(
+        frame["role_mean_angle_deg"],
+        frame["post_mean_angle_deg"],
+        s=frame["post_count"].astype(float) * 7.0,
+        c=frame["spread_gap_deg"],
+        cmap="coolwarm",
+        alpha=0.82,
+        edgecolors="#1b1a17",
+        linewidths=0.6,
+    )
+    limit = max(frame["role_mean_angle_deg"].max(), frame["post_mean_angle_deg"].max()) + 2.0
+    ax.plot([0, limit], [0, limit], linestyle="--", linewidth=1.2, color="#8d99ae")
+    ax.set_xlim(0, limit)
+    ax.set_ylim(0, limit)
+    ax.set_title("Post Spread vs Role Spread")
+    ax.set_xlabel("Role mean angle (degrees)")
+    ax.set_ylabel("Post mean angle (degrees)")
+    cbar = fig.colorbar(scatter, ax=ax, pad=0.02)
+    cbar.set_label("Spread gap (post - role)")
+    ax.grid(alpha=0.22, linestyle="--")
+    return fig
+
+
+def binned_post_vs_role_boxplot(frame: pd.DataFrame):
+    if frame.empty:
+        return None
+    working = frame.copy()
+    working["role_angle_bin_start"] = (working["role_mean_angle_deg"].astype(float) // 10 * 10).astype(int)
+    working["role_angle_bin_label"] = working["role_angle_bin_start"].map(lambda value: f"{value}-{value + 10}")
+    bin_order = sorted(working["role_angle_bin_label"].dropna().unique().tolist(), key=lambda label: int(label.split("-")[0]))
+    if not bin_order:
+        return None
+    fig, ax = plt.subplots(figsize=(12.2, 7.2))
+    sns.boxplot(
+        data=working,
+        x="role_angle_bin_label",
+        y="post_mean_angle_deg",
+        order=bin_order,
+        color="#d5b26f",
+        linecolor="#1b1a17",
+        fliersize=3,
+        ax=ax,
+    )
+    grouped = (
+        working.groupby("role_angle_bin_label", as_index=False)
+        .agg(
+            company_count=("company_name", "count"),
+            mean_post_angle=("post_mean_angle_deg", "mean"),
+            sd_post_angle=("post_mean_angle_deg", "std"),
+        )
+    )
+    grouped["sd_post_angle"] = grouped["sd_post_angle"].fillna(0.0)
+    x_positions = {label: index for index, label in enumerate(bin_order)}
+    for _, row in grouped.iterrows():
+        label = str(row["role_angle_bin_label"])
+        x_position = x_positions[label]
+        ax.text(
+            x_position,
+            float(row["mean_post_angle"]) + float(row["sd_post_angle"]) + 1.2,
+            f"n={int(row['company_count'])}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+            color="#102a43",
+        )
+    ax.set_title("Post Spread Distribution By Role Spread Bin")
+    ax.set_xlabel("Role mean angle bin (degrees)")
+    ax.set_ylabel("Post mean angle (degrees)")
+    ax.grid(alpha=0.22, linestyle="--")
+    ax.tick_params(axis="x", labelrotation=0)
+    return fig
+
+
+def binned_post_vs_role_scatter(frame: pd.DataFrame):
+    """Backward-compatible alias for the old binned view name."""
+
+    return binned_post_vs_role_boxplot(frame)
+
+
+def changed_companies_chart(frame: pd.DataFrame):
+    if frame.empty:
+        return None
+    top = frame.head(15).copy()
+    fig, ax = plt.subplots(figsize=(12.2, 7.6))
+    ax.barh(top["company_name"], top["changed_score"], color="#6d597a", edgecolor="#1b1a17")
+    ax.invert_yaxis()
+    ax.set_title("Changed Companies Ranking")
+    ax.set_xlabel("Changed score")
+    ax.set_ylabel("Company")
+    return fig
+
+
+def company_drift_line(monthly_frame: pd.DataFrame, company_name: str):
+    if monthly_frame.empty:
+        return None
+    ordered = monthly_frame.sort_values("thread_month")
+    months = ordered["thread_month"].tolist()
+    positions = list(range(len(months)))
+    fig, ax = plt.subplots(figsize=(12.4, 5.2))
+    ax.plot(positions, ordered["angle_from_first_deg"], marker="o", linewidth=2.8, color="#264653", label="From first month")
+    previous = ordered["angle_from_previous_deg"].fillna(0.0)
+    ax.plot(positions, previous, marker="s", linewidth=2.2, linestyle="--", color="#e76f51", label="From previous month")
+    ax.set_title(f"{company_name}: Drift Over Time")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Angle (degrees)")
+    apply_month_axis(ax, months)
+    ax.legend(frameon=True, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    return fig
+
+
+def company_projection_chart(company_posts: pd.DataFrame):
+    if company_posts.empty or len(company_posts) < 3:
+        return None
+    ordered = company_posts.sort_values(["thread_month", "post_id"]).copy()
+    texts = ordered["post_text_clean"].fillna("").astype(str).tolist()
+    payload = company_projection_payload(texts)
+    coords = payload["projection"]
+    months = ordered["thread_month"].astype(str).tolist()
+    unique_months = sorted(set(months))
+    fig, ax = plt.subplots(figsize=(7.6, 6.2))
+    palette = plt.cm.get_cmap("viridis", len(unique_months))
+    for index, month in enumerate(unique_months):
+        mask = [value == month for value in months]
+        month_coords = coords[mask]
+        ax.scatter(
+            month_coords[:, 0],
+            month_coords[:, 1],
+            s=60,
+            alpha=0.88,
+            color=palette(index),
+            label=month,
+            edgecolors="#1b1a17",
+            linewidths=0.4,
+        )
+    ax.set_title("Projection Of Company Posts")
+    ax.set_xlabel("Projection X")
+    ax.set_ylabel("Projection Y")
+    ax.legend(frameon=True, fontsize=8, ncols=2)
+    ax.grid(alpha=0.2, linestyle="--")
+    return fig
+
+
+def company_drift_asset_paths(company_name: str) -> tuple[str | None, str | None, str | None]:
+    base_dir = processed_data_dir() / "analytics" / "visuals" / "company_drift_projections"
+    slug = slugify(company_name)
+    png_path = base_dir / f"{slug}.png"
+    gif_path = base_dir / f"{slug}.gif"
+    drift_path = base_dir / f"{slug}_drift.png"
+    return (
+        str(png_path) if png_path.exists() else None,
+        str(gif_path) if gif_path.exists() else None,
+        str(drift_path) if drift_path.exists() else None,
+    )
+
+
 def render() -> None:
     app_style()
     posts, roles, companies, threads = load_data()
@@ -604,7 +842,7 @@ def render() -> None:
         selected_remote_statuses,
     )
 
-    tabs = st.tabs(["Slice Explorer", "Company Variation"])
+    tabs = st.tabs(["Slice Explorer", "Company Variation", "Change Analysis"])
 
     with tabs[0]:
         c1, c2, c3, c4 = st.columns(4)
@@ -849,6 +1087,118 @@ def render() -> None:
                     ]
                 ].rename(columns={"post_text_clean": "post_text"})
                 st.dataframe(company_preview, use_container_width=True, height=320)
+
+    with tabs[2]:
+        st.subheader("Company Change Analysis")
+        st.caption("This view compares post-level spread, role-level spread, and temporal drift for companies in the selected month window.")
+
+        comparison_frame, drift_frame, drift_monthly_frame, changed_frame = change_analysis_frames(
+            filtered_posts, filtered_roles, companies
+        )
+        if comparison_frame.empty or changed_frame.empty:
+            st.info("Need enough recurring companies with role coverage in the selected month window to build change analysis.")
+        else:
+            correlation = comparison_frame["post_mean_angle_deg"].corr(comparison_frame["role_mean_angle_deg"])
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Companies compared", int(len(comparison_frame)))
+            m2.metric("Changed companies ranked", int(len(changed_frame)))
+            m3.metric("Post-role correlation", f"{0.0 if pd.isna(correlation) else correlation:.2f}")
+
+            top_left, top_right = st.columns([1.15, 1.0])
+            with top_left:
+                scatter = post_vs_role_scatter(comparison_frame)
+                if scatter is not None:
+                    st.pyplot(scatter, use_container_width=True)
+            with top_right:
+                ranking_chart = changed_companies_chart(changed_frame)
+                if ranking_chart is not None:
+                    st.pyplot(ranking_chart, use_container_width=True)
+
+            st.markdown("Binned Comparison")
+            binned_boxplot = binned_post_vs_role_boxplot(comparison_frame)
+            if binned_boxplot is not None:
+                st.pyplot(binned_boxplot, use_container_width=True)
+
+            st.markdown("Changed Companies Ranking")
+            st.dataframe(
+                changed_frame[
+                    [
+                        "company_name",
+                        "post_count",
+                        "role_count",
+                        "post_mean_angle_deg",
+                        "role_mean_angle_deg",
+                        "spread_gap_deg",
+                        "drift_score",
+                        "changed_score",
+                    ]
+                ].head(20),
+                use_container_width=True,
+                height=320,
+            )
+
+            company_options_change = (
+                changed_frame.sort_values(["changed_score", "company_name"], ascending=[True, True])["company_name"]
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+            selected_change_company = st.selectbox("Inspect company change", company_options_change, index=0)
+            selected_change_row = changed_frame[changed_frame["company_name"] == selected_change_company].iloc[0]
+            selected_monthly = drift_monthly_frame[drift_monthly_frame["company_name"] == selected_change_company].copy()
+            selected_company_posts = (
+                filtered_posts[filtered_posts["company_display"] == selected_change_company]
+                .sort_values(["thread_month", "post_id"])
+                .copy()
+            )
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Post Mean Angle", f"{float(selected_change_row['post_mean_angle_deg']):.1f}°")
+            c2.metric("Role Mean Angle", f"{float(selected_change_row['role_mean_angle_deg']):.1f}°")
+            c3.metric("Spread Gap", f"{float(selected_change_row['spread_gap_deg']):.1f}°")
+            c4.metric("Drift Score", f"{float(selected_change_row['drift_score']):.1f}")
+
+            lower_left, lower_right = st.columns([1.2, 1.0])
+            with lower_left:
+                drift_fig = company_drift_line(selected_monthly, selected_change_company)
+                if drift_fig is not None:
+                    st.pyplot(drift_fig, use_container_width=True)
+                else:
+                    st.info("Need at least two active months in the current window to show drift.")
+            with lower_right:
+                projection_fig = company_projection_chart(selected_company_posts)
+                if projection_fig is not None:
+                    st.pyplot(projection_fig, use_container_width=True)
+                else:
+                    st.info("Need at least three posts in the current window to show a projection.")
+
+            asset_png_path, asset_gif_path, asset_drift_path = company_drift_asset_paths(selected_change_company)
+            if asset_gif_path or asset_png_path or asset_drift_path:
+                st.markdown("Saved Local Projection Artifacts")
+                asset_left, asset_right = st.columns(2)
+                with asset_left:
+                    if asset_gif_path:
+                        st.image(asset_gif_path, caption="Saved projection GIF")
+                    elif asset_png_path:
+                        st.image(asset_png_path, caption="Saved projection PNG")
+                with asset_right:
+                    if asset_drift_path:
+                        st.image(asset_drift_path, caption="Saved drift-over-time PNG")
+
+            st.markdown("Sample Company Posts")
+            selected_company_sample = sample_company_posts(selected_company_posts, max_rows=6)
+            for _, row in selected_company_sample.iterrows():
+                header_parts = [str(row.get("thread_month") or "")]
+                if row.get("remote_status"):
+                    header_parts.append(str(row.get("remote_status")))
+                if row.get("employment_type"):
+                    header_parts.append(str(row.get("employment_type")))
+                if row.get("compensation_text"):
+                    header_parts.append(str(row.get("compensation_text")))
+                elif row.get("funding"):
+                    header_parts.append(f"funding: {row.get('funding')}")
+                st.markdown(" | ".join(part for part in header_parts if part))
+                st.code(str(row.get("post_text_clean") or ""), language="text")
 
 
 if __name__ == "__main__":
