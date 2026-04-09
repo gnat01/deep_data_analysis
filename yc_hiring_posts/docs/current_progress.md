@@ -138,6 +138,8 @@ CLI commands:
 - `global-remote-share-postgres`
 - `post-shape-summary-postgres`
 - `company-post-length-consistency-postgres`
+- `company-change-summary-postgres`
+- `company-theme-history-postgres`
 
 These now cover:
 
@@ -153,6 +155,8 @@ These now cover:
 - recurring-company patterns
 - global-remote heuristics
 - post-shape / consistency questions
+- company-change rankings
+- company-theme history / theme shifts
 
 #### Question classification layer
 

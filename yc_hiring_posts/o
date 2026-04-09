@@ -1,0 +1,76 @@
+{
+  "entity": "company_theme_history",
+  "schema": "yc_hiring",
+  "filters": {
+    "company_name": null,
+    "month_from": "2023-01",
+    "month_to": "2026-04",
+    "mode": "shift_summary",
+    "limit": 5
+  },
+  "row_count": 5,
+  "rows": [
+    {
+      "company_key": "company_a91a3089c26d",
+      "company_name": "Layer Health",
+      "active_month_count": 17,
+      "emerging_themes": [
+        "ai_ml",
+        "health_bio",
+        "developer_tools"
+      ],
+      "fading_themes": [],
+      "theme_shift_score": 52
+    },
+    {
+      "company_key": "company_6f5cbc5cfa4d",
+      "company_name": "Radar Labs",
+      "active_month_count": 25,
+      "emerging_themes": [
+        "developer_tools",
+        "data_infra",
+        "climate_energy"
+      ],
+      "fading_themes": [],
+      "theme_shift_score": 50
+    },
+    {
+      "company_key": "company_46587fb818d2",
+      "company_name": "Absinthe Labs",
+      "active_month_count": 11,
+      "emerging_themes": [
+        "data_infra",
+        "developer_tools",
+        "security_identity"
+      ],
+      "fading_themes": [],
+      "theme_shift_score": 46
+    },
+    {
+      "company_key": "company_e7b467e28b1a",
+      "company_name": "Tandem Health",
+      "active_month_count": 22,
+      "emerging_themes": [
+        "ai_ml",
+        "health_bio",
+        "developer_tools"
+      ],
+      "fading_themes": [],
+      "theme_shift_score": 45
+    },
+    {
+      "company_key": "company_b894b99ea789",
+      "company_name": "Freeform (http://freeform.co)",
+      "active_month_count": 17,
+      "emerging_themes": [
+        "ai_ml",
+        "climate_energy",
+        "robotics_hardware"
+      ],
+      "fading_themes": [
+        "data_infra"
+      ],
+      "theme_shift_score": 36
+    }
+  ]
+}

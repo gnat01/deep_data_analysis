@@ -154,6 +154,8 @@ These should stay:
 - `global-remote-share-postgres`
 - `post-shape-summary-postgres`
 - `company-post-length-consistency-postgres`
+- `company-change-summary-postgres`
+- `company-theme-history-postgres`
 
 ### Remaining Task 3 Work
 

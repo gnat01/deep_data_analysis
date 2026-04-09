@@ -405,3 +405,25 @@ python src/cli.py company-post-length-consistency-postgres \
   --min-posts 3 \
   --limit 10
 ```
+
+Company change summary:
+
+```bash
+python src/cli.py company-change-summary-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --mode most_changed \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit 5
+```
+
+Company theme history / theme shifts:
+
+```bash
+python src/cli.py company-theme-history-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --mode shift_summary \
+  --month-from 2023-01 \
+  --month-to 2026-04 \
+  --limit 5
+```

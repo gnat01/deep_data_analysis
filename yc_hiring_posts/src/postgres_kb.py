@@ -11,7 +11,16 @@ import re
 from collections import Counter
 
 from storage import processed_data_dir, project_root
-from analytics import AI_CONCEPT_PATTERNS
+from analytics import (
+    AI_CONCEPT_PATTERNS,
+    PRODUCT_THEME_PATTERNS,
+    changed_companies_ranked,
+    company_building_themes_by_month,
+    company_embedding_drift,
+    company_post_vs_role_spread,
+    company_role_semantic_spread,
+    company_semantic_spread,
+)
 
 
 DEFAULT_DB_SCHEMA = "yc_hiring"
@@ -1459,4 +1468,252 @@ def company_post_length_consistency_postgres(
         "filters": {"month_from": month_from, "month_to": month_to, "min_posts": min_posts, "limit": limit},
         "row_count": len(rows),
         "rows": rows,
+    }
+
+
+def _load_posts_roles_threads_from_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    company_name: str | None = None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, str]]:
+    """Load filtered posts/roles plus thread-month lookup from PostgreSQL for Python-side analytics."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    where_clauses.extend(
+        company_filters_sql(
+            company_name,
+            "p.company_id",
+            "coalesce(c.company_name_observed_preferred, p.company_name_observed)",
+            params,
+        )
+    )
+    posts_sql = f"""
+        SELECT
+            p.post_id,
+            p.thread_id,
+            p.company_id,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name_observed,
+            p.is_hiring_post,
+            p.post_text_clean,
+            p.remote_status
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month, p.post_id
+    """
+    roles_sql = f"""
+        SELECT
+            r.role_id,
+            r.post_id,
+            r.company_id,
+            r.role_title_observed,
+            r.role_title_normalized,
+            r.role_family,
+            r.role_subfamily,
+            r.seniority,
+            r.skills_text,
+            r.responsibilities_text,
+            r.requirements_text,
+            r.role_location_text,
+            r.role_remote_status,
+            r.misc
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY t.thread_month, r.role_id
+    """
+    threads_sql = f"""
+        SELECT DISTINCT t.thread_id, t.thread_month
+        FROM {schema}.threads t
+        JOIN {schema}.posts p ON p.thread_id = t.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(posts_sql, params)
+            post_columns = [desc[0] for desc in cursor.description]
+            posts = [dict(zip(post_columns, row, strict=False)) for row in cursor.fetchall()]
+
+            cursor.execute(roles_sql, params)
+            role_columns = [desc[0] for desc in cursor.description]
+            roles = [dict(zip(role_columns, row, strict=False)) for row in cursor.fetchall()]
+
+            cursor.execute(threads_sql, params)
+            thread_columns = [desc[0] for desc in cursor.description]
+            thread_rows = [dict(zip(thread_columns, row, strict=False)) for row in cursor.fetchall()]
+
+    month_by_thread_id = {str(row["thread_id"]): str(row["thread_month"]) for row in thread_rows}
+    return posts, roles, month_by_thread_id
+
+
+def company_change_summary_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    company_name: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    mode: str = "most_changed",
+    limit: int = 25,
+) -> dict[str, object]:
+    """Return company-level change metrics computed from the PostgreSQL-backed corpus."""
+
+    posts, roles, month_by_thread_id = _load_posts_roles_threads_from_postgres(
+        database_url=database_url,
+        schema=schema,
+        month_from=month_from,
+        month_to=month_to,
+        company_name=company_name,
+    )
+    company_name_by_id = {str(post["company_id"]): str(post["company_name_observed"]) for post in posts if post.get("company_id")}
+    top_n = 1 if company_name else max(100, limit * 10)
+    semantic_rows = company_semantic_spread(posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+    role_rows = company_role_semantic_spread(roles, posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+    post_vs_role_rows = company_post_vs_role_spread(semantic_rows, role_rows)
+    drift_rows, drift_monthly_rows = company_embedding_drift(posts, company_name_by_id, month_by_thread_id, top_n=top_n)
+    changed_rows = changed_companies_ranked(post_vs_role_rows, drift_rows)
+    drift_by_key = {str(row["company_key"]): row for row in drift_rows}
+    monthly_by_key: dict[str, list[dict[str, object]]] = {}
+    for row in drift_monthly_rows:
+        monthly_by_key.setdefault(str(row["company_key"]), []).append(row)
+
+    rows: list[dict[str, object]] = []
+    for row in changed_rows:
+        company_key = str(row["company_key"])
+        drift = drift_by_key.get(company_key, {})
+        monthly_rows = monthly_by_key.get(company_key, [])
+        max_from_first = max((float(item["angle_from_first_deg"]) for item in monthly_rows), default=0.0)
+        final_from_first = float(monthly_rows[-1]["angle_from_first_deg"]) if monthly_rows else 0.0
+        return_score = round(max(0.0, max_from_first - final_from_first), 2)
+        rows.append(
+            {
+                **row,
+                "max_angle_from_first_deg": drift.get("max_angle_from_first_deg"),
+                "final_angle_from_first_deg": drift.get("final_angle_from_first_deg"),
+                "return_score": return_score,
+            }
+        )
+
+    if mode == "least_changed":
+        rows.sort(key=lambda row: (float(row["changed_score"]), -int(row["post_count"] or 0), str(row["company_name"] or "")))
+    elif mode == "pivot_return":
+        rows.sort(key=lambda row: (-float(row["return_score"]), -float(row["drift_score"]), -int(row["post_count"] or 0)))
+    else:
+        rows.sort(key=lambda row: (-float(row["changed_score"]), -int(row["post_count"] or 0)))
+
+    limited_rows = rows[:limit]
+    return {
+        "entity": "company_change_summary",
+        "schema": schema,
+        "filters": {
+            "company_name": company_name,
+            "month_from": month_from,
+            "month_to": month_to,
+            "mode": mode,
+            "limit": limit,
+        },
+        "row_count": len(limited_rows),
+        "rows": limited_rows,
+    }
+
+
+def company_theme_history_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    company_name: str | None = None,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    mode: str = "timeline",
+    limit: int = 25,
+) -> dict[str, object]:
+    """Return theme timelines or company-level theme change summaries from PostgreSQL-backed posts."""
+
+    posts, _roles, month_by_thread_id = _load_posts_roles_threads_from_postgres(
+        database_url=database_url,
+        schema=schema,
+        month_from=month_from,
+        month_to=month_to,
+        company_name=company_name,
+    )
+    company_name_by_id = {str(post["company_id"]): str(post["company_name_observed"]) for post in posts if post.get("company_id")}
+    theme_rows = company_building_themes_by_month(posts, company_name_by_id, month_by_thread_id)
+
+    if mode == "timeline":
+        rows = theme_rows
+        if company_name is None:
+            rows = sorted(rows, key=lambda row: (str(row["thread_month"]), -int(row["hiring_post_count"]), str(row["building_theme"])))[:limit]
+        return {
+            "entity": "company_theme_history",
+            "schema": schema,
+            "filters": {"company_name": company_name, "month_from": month_from, "month_to": month_to, "mode": mode, "limit": limit},
+            "row_count": len(rows),
+            "rows": rows,
+        }
+
+    company_theme_counter: dict[str, Counter[str]] = {}
+    months_by_company: dict[str, set[str]] = {}
+    for post in posts:
+        text = str(post.get("post_text_clean") or "").lower()
+        if not text:
+            continue
+        company_key = str(post.get("company_id") or f"observed:{str(post.get('company_name_observed') or '').strip().lower()}")
+        company_theme_counter.setdefault(company_key, Counter())
+        months_by_company.setdefault(company_key, set()).add(month_by_thread_id[str(post["thread_id"])])
+        for theme_name, patterns in PRODUCT_THEME_PATTERNS:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
+                company_theme_counter[company_key][theme_name] += 1
+
+    rows: list[dict[str, object]] = []
+    months = sorted(set(month_by_thread_id.values()))
+    midpoint = max(1, len(months) // 2)
+    early_months = set(months[:midpoint])
+    late_months = set(months[midpoint:]) or set(months[-1:])
+    early_counter_by_company: dict[str, Counter[str]] = {}
+    late_counter_by_company: dict[str, Counter[str]] = {}
+    name_by_key: dict[str, str] = {}
+    for post in posts:
+        text = str(post.get("post_text_clean") or "").lower()
+        if not text:
+            continue
+        company_key = str(post.get("company_id") or f"observed:{str(post.get('company_name_observed') or '').strip().lower()}")
+        name_by_key[company_key] = str(post.get("company_name_observed") or "")
+        bucket = early_counter_by_company if month_by_thread_id[str(post["thread_id"])] in early_months else late_counter_by_company
+        bucket.setdefault(company_key, Counter())
+        for theme_name, patterns in PRODUCT_THEME_PATTERNS:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
+                bucket[company_key][theme_name] += 1
+
+    for company_key, late_counter in late_counter_by_company.items():
+        early_counter = early_counter_by_company.get(company_key, Counter())
+        emerging = [theme for theme, count in late_counter.most_common() if count > early_counter.get(theme, 0)]
+        fading = [theme for theme, count in early_counter.most_common() if count > late_counter.get(theme, 0)]
+        if not emerging and not fading:
+            continue
+        rows.append(
+            {
+                "company_key": company_key,
+                "company_name": name_by_key.get(company_key),
+                "active_month_count": len(months_by_company.get(company_key, set())),
+                "emerging_themes": emerging[:3],
+                "fading_themes": fading[:3],
+                "theme_shift_score": sum(max(0, late_counter[theme] - early_counter.get(theme, 0)) for theme in late_counter) + sum(max(0, early_counter[theme] - late_counter.get(theme, 0)) for theme in early_counter),
+            }
+        )
+    rows.sort(key=lambda row: (-int(row["theme_shift_score"]), -int(row["active_month_count"])))
+    return {
+        "entity": "company_theme_history",
+        "schema": schema,
+        "filters": {"company_name": company_name, "month_from": month_from, "month_to": month_to, "mode": mode, "limit": limit},
+        "row_count": min(len(rows), limit),
+        "rows": rows[:limit],
     }

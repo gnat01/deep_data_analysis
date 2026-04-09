@@ -16,12 +16,14 @@ from parse import parse_and_write_thread_posts
 from postgres_kb import (
     ai_concept_timeline_postgres,
     company_activity_timeline_postgres,
+    company_change_summary_postgres,
     companies_every_month_postgres,
     company_post_length_consistency_postgres,
     company_remote_change_postgres,
     companies_for_role_postgres,
     compensation_history_postgres,
     company_role_presence_postgres,
+    company_theme_history_postgres,
     DEFAULT_DB_SCHEMA,
     evidence_lookup_postgres,
     global_remote_share_postgres,
@@ -341,6 +343,30 @@ def build_parser() -> argparse.ArgumentParser:
     post_length_consistency_parser.add_argument("--month-to", default=None)
     post_length_consistency_parser.add_argument("--min-posts", type=int, default=3)
     post_length_consistency_parser.add_argument("--limit", type=int, default=50)
+
+    company_change_summary_parser = subparsers.add_parser(
+        "company-change-summary-postgres",
+        help="Return company-level change rankings from the PostgreSQL-backed corpus.",
+    )
+    company_change_summary_parser.add_argument("--database-url", default=None)
+    company_change_summary_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    company_change_summary_parser.add_argument("--company", dest="company_name", default=None)
+    company_change_summary_parser.add_argument("--month-from", default=None)
+    company_change_summary_parser.add_argument("--month-to", default=None)
+    company_change_summary_parser.add_argument("--mode", choices=("most_changed", "least_changed", "pivot_return"), default="most_changed")
+    company_change_summary_parser.add_argument("--limit", type=int, default=25)
+
+    company_theme_history_parser = subparsers.add_parser(
+        "company-theme-history-postgres",
+        help="Return theme timelines or company theme-shift summaries from the PostgreSQL-backed corpus.",
+    )
+    company_theme_history_parser.add_argument("--database-url", default=None)
+    company_theme_history_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    company_theme_history_parser.add_argument("--company", dest="company_name", default=None)
+    company_theme_history_parser.add_argument("--month-from", default=None)
+    company_theme_history_parser.add_argument("--month-to", default=None)
+    company_theme_history_parser.add_argument("--mode", choices=("timeline", "shift_summary"), default="timeline")
+    company_theme_history_parser.add_argument("--limit", type=int, default=25)
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -709,6 +735,32 @@ def main() -> int:
             month_from=args.month_from,
             month_to=args.month_to,
             min_posts=args.min_posts,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-change-summary-postgres":
+        result = company_change_summary_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            mode=args.mode,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-theme-history-postgres":
+        result = company_theme_history_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            company_name=args.company_name,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            mode=args.mode,
             limit=args.limit,
         )
         print(json.dumps(result, indent=2, default=str))

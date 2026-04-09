@@ -10,9 +10,11 @@ if str(SRC_DIR) not in sys.path:
 from postgres_kb import (
     ai_concept_timeline_postgres,
     companies_every_month_postgres,
+    company_change_summary_postgres,
     DEFAULT_DB_SCHEMA,
     company_post_length_consistency_postgres,
     company_remote_change_postgres,
+    company_theme_history_postgres,
     companies_for_role_postgres,
     TABLE_SPECS,
     company_activity_timeline_postgres,
@@ -500,3 +502,29 @@ def test_additional_task3_helper_functions_return_expected_shapes(monkeypatch) -
     consistency = company_post_length_consistency_postgres()
     assert consistency["row_count"] == 1
     assert consistency["rows"][0]["stddev_post_length_chars"] == 50.0
+
+
+def test_company_change_and_theme_helpers(monkeypatch) -> None:
+    posts = [
+        {"post_id": "p1", "thread_id": "t1", "company_id": "c1", "company_name_observed": "Acme", "is_hiring_post": True, "post_text_clean": "AI agents platform", "remote_status": "remote"},
+        {"post_id": "p2", "thread_id": "t2", "company_id": "c1", "company_name_observed": "Acme", "is_hiring_post": True, "post_text_clean": "security platform with agents", "remote_status": "remote"},
+        {"post_id": "p3", "thread_id": "t3", "company_id": "c2", "company_name_observed": "Beta", "is_hiring_post": True, "post_text_clean": "fintech payments payroll", "remote_status": "hybrid"},
+    ]
+    roles = [
+        {"role_id": "r1", "post_id": "p1", "company_id": "c1", "role_title_observed": "AI Engineer", "role_title_normalized": "AI Engineer", "role_family": "ml_ai", "role_subfamily": None, "seniority": None, "skills_text": "python", "responsibilities_text": "", "requirements_text": "", "role_location_text": "Remote", "role_remote_status": "remote", "misc": {}},
+        {"role_id": "r2", "post_id": "p2", "company_id": "c1", "role_title_observed": "Platform Engineer", "role_title_normalized": "Platform Engineer", "role_family": "engineering", "role_subfamily": None, "seniority": None, "skills_text": "platform", "responsibilities_text": "", "requirements_text": "", "role_location_text": "Remote", "role_remote_status": "remote", "misc": {}},
+        {"role_id": "r3", "post_id": "p3", "company_id": "c2", "role_title_observed": "Fintech Engineer", "role_title_normalized": "Fintech Engineer", "role_family": "engineering", "role_subfamily": None, "seniority": None, "skills_text": "payments", "responsibilities_text": "", "requirements_text": "", "role_location_text": "Hybrid", "role_remote_status": "hybrid", "misc": {}},
+    ]
+    month_by_thread_id = {"t1": "2025-01", "t2": "2025-07", "t3": "2025-02"}
+
+    monkeypatch.setattr("postgres_kb._load_posts_roles_threads_from_postgres", lambda **kwargs: (posts, roles, month_by_thread_id))
+
+    change = company_change_summary_postgres(mode="most_changed", limit=5)
+    assert change["entity"] == "company_change_summary"
+    assert change["row_count"] >= 1
+    assert "changed_score" in change["rows"][0]
+
+    themes = company_theme_history_postgres(mode="shift_summary", limit=5)
+    assert themes["entity"] == "company_theme_history"
+    assert themes["row_count"] >= 1
+    assert "theme_shift_score" in themes["rows"][0]
