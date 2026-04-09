@@ -41,6 +41,18 @@ AI_CONCEPT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("inference", (r"\binference\b", r"\bmodel serving\b")),
 ]
 
+PRODUCT_THEME_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("ai_ml", (r"\bai\b", r"\bml\b", r"\bllms?\b", r"generative ai", r"\bmodel(s)?\b", r"\brag\b", r"\bagents?\b")),
+    ("developer_tools", (r"developer tool", r"\bdevops\b", r"\bapi\b", r"\bsdk\b", r"\bplatform engineering\b", r"\bobservability\b", r"\bci/cd\b", r"\binfrastructure\b")),
+    ("data_infra", (r"\bdata platform\b", r"\bwarehouse\b", r"\betl\b", r"\banalytics\b", r"\bdatabase\b", r"\bvector db\b", r"\bvector database\b")),
+    ("security_identity", (r"\bsecurity\b", r"\bcybersecurity\b", r"\bidentity\b", r"\bauth\b", r"\bauthentication\b", r"\bcompliance\b", r"\bthreat\b")),
+    ("fintech", (r"\bpayments?\b", r"\bfintech\b", r"\bbanking\b", r"\binsurance\b", r"\bpayroll\b", r"\btax\b", r"\baccounting\b", r"\bcrypto\b")),
+    ("health_bio", (r"\bhealthcare\b", r"\bmedical\b", r"\bclinical\b", r"\bpatient\b", r"\bbiotech\b", r"\bpharma\b", r"\bgenomics\b")),
+    ("climate_energy", (r"\bclimate\b", r"\benergy\b", r"\bsolar\b", r"\bgrid\b", r"\bbattery\b", r"\bcarbon\b")),
+    ("robotics_hardware", (r"\brobotics\b", r"\bhardware\b", r"\bembedded\b", r"\bsensors?\b", r"\bdrone\b", r"\bsemiconductor\b", r"\bmanufacturing\b")),
+    ("commerce_logistics", (r"\be-?commerce\b", r"\bmarketplace\b", r"\blogistics\b", r"\bsupply chain\b", r"\bfreight\b", r"\bretail\b")),
+]
+
 MONTH_ABBREVIATIONS = {
     1: "Jan",
     2: "Feb",
@@ -82,6 +94,7 @@ def materialize_core_analytics() -> dict[str, Path]:
     role_family_rows = role_family_trends_by_month(roles, posts, company_name_by_id, month_by_thread_id)
     distinct_role_rows = distinct_roles_by_month(roles, posts, month_by_thread_id)
     ai_concept_rows = ai_concepts_by_month(posts, roles, month_by_thread_id)
+    product_theme_rows = company_building_themes_by_month(posts, company_name_by_id, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
 
     outputs = {
@@ -113,6 +126,10 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "ai_concepts_by_month.csv",
             ai_concept_rows,
         ),
+        "company_building_themes_by_month": write_csv(
+            analytics_dir / "company_building_themes_by_month.csv",
+            product_theme_rows,
+        ),
         "recurring_company_hiring_patterns": write_csv(
             analytics_dir / "recurring_company_hiring_patterns.csv",
             recurring_rows,
@@ -127,6 +144,7 @@ def materialize_core_analytics() -> dict[str, Path]:
         role_family_rows=role_family_rows,
         distinct_role_rows=distinct_role_rows,
         ai_concept_rows=ai_concept_rows,
+        product_theme_rows=product_theme_rows,
         recurring_rows=recurring_rows,
     )
     outputs.update(visual_outputs)
@@ -371,6 +389,47 @@ def ai_concepts_by_month(
     return rows
 
 
+def company_building_themes_by_month(
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+) -> list[dict[str, object]]:
+    """Track broad product themes inferred from company hiring-post text."""
+
+    company_ids_by_theme_month: dict[tuple[str, str], set[str]] = defaultdict(set)
+    observed_names_by_theme_month: dict[tuple[str, str], set[str]] = defaultdict(set)
+    hiring_posts_by_theme_month: Counter[tuple[str, str]] = Counter()
+
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        month = month_by_thread_id[str(post["thread_id"])]
+        text = str(post.get("post_text_clean") or "").lower()
+        company_id = post.get("company_id")
+        observed_name = post.get("company_name_observed")
+        for theme_name, patterns in PRODUCT_THEME_PATTERNS:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
+                key = (month, theme_name)
+                hiring_posts_by_theme_month[key] += 1
+                if company_id is not None:
+                    company_ids_by_theme_month[key].add(str(company_id))
+                if isinstance(observed_name, str) and observed_name.strip():
+                    observed_names_by_theme_month[key].add(observed_name.strip())
+
+    rows = []
+    for (month, theme_name), hiring_post_count in sorted(hiring_posts_by_theme_month.items()):
+        rows.append(
+            {
+                "thread_month": month,
+                "building_theme": theme_name,
+                "company_count": len(company_ids_by_theme_month[(month, theme_name)]),
+                "observed_company_count": len(observed_names_by_theme_month[(month, theme_name)]),
+                "hiring_post_count": hiring_post_count,
+            }
+        )
+    return rows
+
+
 def recurring_company_hiring_patterns(
     posts: list[dict[str, object]],
     company_name_by_id: dict[str, str],
@@ -443,6 +502,7 @@ def write_analytics_visuals(
     role_family_rows: list[dict[str, object]],
     distinct_role_rows: list[dict[str, object]],
     ai_concept_rows: list[dict[str, object]],
+    product_theme_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
     """Write a polished visual for each core analytical output."""
@@ -481,10 +541,22 @@ def write_analytics_visuals(
         "ai_concepts_share_visual": plot_ai_concept_share(
             plt, pd, visuals_dir / "ai_concepts_share_by_month.png", ai_concept_rows
         ),
+        "company_building_themes_timeseries_visual": plot_company_building_theme_timeseries(
+            plt, pd, visuals_dir / "company_building_themes_timeseries.png", product_theme_rows
+        ),
         "recurring_company_hiring_patterns_visual": plot_recurring_company_patterns(
             plt, pd, visuals_dir / "recurring_company_hiring_patterns.png", recurring_rows
         ),
     }
+    outputs.update(
+        plot_company_building_themes_by_year(
+            plt,
+            pd,
+            sns,
+            visuals_dir,
+            product_theme_rows,
+        )
+    )
     outputs["visual_index"] = write_visual_index(visuals_dir / "README.md", outputs)
     return outputs
 
@@ -972,6 +1044,107 @@ def plot_ai_concept_share(plt, pd, output_path: Path, rows: list[dict[str, objec
     ax.set_title("AI Concept Share Of Hiring Posts")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Share of hiring posts (%)")
+    apply_month_axis(ax, months)
+    ax.legend(frameon=True, ncols=2, loc="upper left")
+    ax.grid(alpha=0.25, linestyle="--")
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_company_building_themes_by_year(plt, pd, sns, visuals_dir: Path, rows: list[dict[str, object]]) -> dict[str, Path]:
+    """Plot one readable product-theme heatmap per year."""
+
+    frame = pd.DataFrame(rows)
+    outputs: dict[str, Path] = {}
+    for year in ["2023", "2024", "2025", "2026"]:
+        output_key = f"company_building_themes_{year}_visual"
+        output_path = visuals_dir / f"company_building_themes_{year}.png"
+        if frame.empty:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.set_title(f"What Companies Are Building ({year})")
+            ax.text(0.5, 0.5, "No product-theme signals yet", ha="center", va="center")
+            ax.axis("off")
+            fig.savefig(output_path, dpi=180, bbox_inches="tight")
+            plt.close(fig)
+            outputs[output_key] = output_path
+            continue
+
+        year_frame = frame[frame["thread_month"].astype(str).str.startswith(year)].copy()
+        if year_frame.empty:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.set_title(f"What Companies Are Building ({year})")
+            ax.text(0.5, 0.5, "No product-theme signals for this year", ha="center", va="center")
+            ax.axis("off")
+            fig.savefig(output_path, dpi=180, bbox_inches="tight")
+            plt.close(fig)
+            outputs[output_key] = output_path
+            continue
+
+        top_themes = (
+            year_frame.groupby("building_theme", as_index=False)["company_count"]
+            .sum()
+            .sort_values(["company_count", "building_theme"], ascending=[False, True])
+            .head(8)
+        )
+        filtered = year_frame[year_frame["building_theme"].isin(top_themes["building_theme"])]
+        pivot = filtered.pivot_table(index="building_theme", columns="thread_month", values="company_count", aggfunc="sum", fill_value=0)
+        pivot = pivot.loc[top_themes["building_theme"]]
+        pivot = rename_month_columns(pivot, pd)
+        fig, ax = plt.subplots(figsize=(10.5, 6.6), constrained_layout=True)
+        heatmap = sns.heatmap(
+            pivot,
+            cmap="YlGnBu",
+            linewidths=0.7,
+            linecolor="#ece4d8",
+            cbar_kws={"label": "Companies"},
+            annot=True,
+            fmt="g",
+            annot_kws={"fontsize": 10, "fontweight": "bold"},
+            ax=ax,
+        )
+        threshold = float(pivot.to_numpy().max()) * 0.42 if not pivot.empty else 0.0
+        for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+            text.set_color("#fffaf0" if float(value) >= threshold else "#102a43")
+        ax.set_title(f"What Companies Are Building ({year})")
+        ax.set_xlabel("Thread month")
+        ax.set_ylabel("Product theme")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        outputs[output_key] = output_path
+    return outputs
+
+
+def plot_company_building_theme_timeseries(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot top product themes over time."""
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.set_title("Product Themes Over Time")
+        ax.text(0.5, 0.5, "No product-theme signals yet", ha="center", va="center")
+        ax.axis("off")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+    top_themes = (
+        frame.groupby("building_theme", as_index=False)["company_count"]
+        .sum()
+        .sort_values(["company_count", "building_theme"], ascending=[False, True])
+        .head(6)["building_theme"]
+        .tolist()
+    )
+    filtered = frame[frame["building_theme"].isin(top_themes)]
+    pivot = filtered.pivot_table(index="thread_month", columns="building_theme", values="company_count", aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
+    fig, ax = plt.subplots(figsize=(12.5, 7), constrained_layout=True)
+    palette = ["#183a37", "#2a9d8f", "#e9c46a", "#e76f51", "#457b9d", "#6d597a"]
+    for color, theme in zip(palette, pivot.columns, strict=False):
+        ax.plot(positions, pivot[theme], linewidth=2.8, marker="o", markersize=6, label=str(theme).replace("_", " "), color=color)
+    ax.set_title("Product Themes Over Time")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Companies")
     apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=2, loc="upper left")
     ax.grid(alpha=0.25, linestyle="--")

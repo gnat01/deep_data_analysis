@@ -305,6 +305,7 @@ data/processed/analytics/remote_status_share_by_month.csv
 data/processed/analytics/role_family_trends_by_month.csv
 data/processed/analytics/distinct_roles_by_month.csv
 data/processed/analytics/ai_concepts_by_month.csv
+data/processed/analytics/company_building_themes_by_month.csv
 data/processed/analytics/recurring_company_hiring_patterns.csv
 data/processed/analytics/analytics_manifest.json
 data/processed/analytics/visuals/
@@ -320,6 +321,7 @@ sed -n '1,12p' data/processed/analytics/remote_status_trends_by_month.csv
 sed -n '1,12p' data/processed/analytics/remote_status_share_by_month.csv
 sed -n '1,10p' data/processed/analytics/distinct_roles_by_month.csv
 sed -n '1,14p' data/processed/analytics/ai_concepts_by_month.csv
+sed -n '1,14p' data/processed/analytics/company_building_themes_by_month.csv
 sed -n '1,12p' data/processed/analytics/recurring_company_hiring_patterns.csv
 ls data/processed/analytics/visuals
 ```
@@ -337,6 +339,11 @@ data/processed/analytics/visuals/role_family_trends_timeseries.png
 data/processed/analytics/visuals/distinct_roles_by_month.png
 data/processed/analytics/visuals/ai_concepts_by_month.png
 data/processed/analytics/visuals/ai_concepts_share_by_month.png
+data/processed/analytics/visuals/company_building_themes_2023.png
+data/processed/analytics/visuals/company_building_themes_2024.png
+data/processed/analytics/visuals/company_building_themes_2025.png
+data/processed/analytics/visuals/company_building_themes_2026.png
+data/processed/analytics/visuals/company_building_themes_timeseries.png
 data/processed/analytics/visuals/recurring_company_hiring_patterns.png
 ```
 
@@ -360,6 +367,8 @@ It then shows:
 - filtered hiring-post time series
 - filtered remote-status mix over time
 - filtered role-family time series
+- filtered AI concept trends
+- a what-companies-are-building summary
 - a searchable post preview table
 
 ## Recommended End-To-End Order For One New Month

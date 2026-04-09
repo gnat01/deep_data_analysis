@@ -2,13 +2,31 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import re
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 import streamlit as st
 
+from analytics import AI_CONCEPT_PATTERNS, PRODUCT_THEME_PATTERNS
 from storage import processed_data_dir
+
+
+MONTH_ABBREVIATIONS = {
+    1: "Jan",
+    2: "Feb",
+    3: "Mar",
+    4: "Apr",
+    5: "May",
+    6: "Jun",
+    7: "Jul",
+    8: "Aug",
+    9: "Sep",
+    10: "Oct",
+    11: "Nov",
+    12: "Dec",
+}
 
 
 def load_table(name: str) -> pd.DataFrame:
@@ -137,14 +155,36 @@ def month_counts(frame: pd.DataFrame, value_column: str, count_name: str) -> pd.
     return grouped
 
 
+def pretty_month_label(thread_month: str) -> str:
+    year_text, month_text = thread_month.split("-")
+    month_number = int(month_text)
+    month_name = MONTH_ABBREVIATIONS[month_number]
+    if month_number == 1:
+        return f"{month_name}\n{year_text}"
+    return month_name
+
+
+def apply_month_axis(ax, thread_months: list[str]) -> None:
+    positions = list(range(len(thread_months)))
+    ax.set_xticks(positions)
+    ax.set_xticklabels([pretty_month_label(value) for value in thread_months])
+    ax.tick_params(axis="x", labelrotation=0, labelsize=10, pad=6)
+    for position, thread_month in enumerate(thread_months):
+        if thread_month.endswith("-01"):
+            ax.axvline(position, color="#d9ccb8", linewidth=1.0, alpha=0.45, zorder=0)
+
+
 def line_chart(frame: pd.DataFrame, x_col: str, y_col: str, series_col: str, title: str, ylabel: str):
     fig, ax = plt.subplots(figsize=(10, 4.6))
     pivot = frame.pivot_table(index=x_col, columns=series_col, values=y_col, aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     for column in pivot.columns:
-        ax.plot(pivot.index, pivot[column], marker="o", linewidth=2.6, label=str(column).title())
+        ax.plot(positions, pivot[column], marker="o", linewidth=2.6, label=str(column).title())
     ax.set_title(title)
     ax.set_xlabel("Thread month")
     ax.set_ylabel(ylabel)
+    apply_month_axis(ax, months)
     ax.legend(frameon=True, ncols=2)
     ax.grid(alpha=0.25, linestyle="--")
     return fig
@@ -153,6 +193,8 @@ def line_chart(frame: pd.DataFrame, x_col: str, y_col: str, series_col: str, tit
 def stacked_pct_chart(frame: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(10, 4.8))
     pivot = frame.pivot_table(index="thread_month", columns="remote_status", values="post_count", aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
     total = pivot.sum(axis=1).replace(0, 1)
     share = pivot.div(total, axis=0) * 100.0
     order = [status for status in ["remote", "hybrid", "onsite", "unspecified"] if status in share.columns] + [
@@ -163,13 +205,122 @@ def stacked_pct_chart(frame: pd.DataFrame):
     bottom = None
     for column in share.columns:
         values = share[column].tolist()
-        ax.bar(share.index, values, bottom=bottom, label=str(column).title(), color=colors.get(column, "#457b9d"))
+        ax.bar(positions, values, bottom=bottom, label=str(column).title(), color=colors.get(column, "#457b9d"))
         bottom = values if bottom is None else [l + r for l, r in zip(bottom, values)]
     ax.set_title("Remote Mix Over Time")
     ax.set_xlabel("Thread month")
     ax.set_ylabel("Share of selected posts (%)")
+    apply_month_axis(ax, months)
     ax.set_ylim(0, 100)
     ax.legend(frameon=True, ncols=4, loc="upper center", bbox_to_anchor=(0.5, 1.16))
+    return fig
+
+
+def concept_rows(frame: pd.DataFrame, patterns: list[tuple[str, tuple[str, ...]]], count_field: str) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(columns=["thread_month", "concept_name", count_field, "month_total_hiring_posts", "share_pct"])
+    month_totals = frame.groupby("thread_month").size().to_dict()
+    counts: dict[tuple[str, str], int] = {}
+    for _, row in frame.iterrows():
+        month = str(row["thread_month"])
+        text = str(row.get("post_text_clean") or "").lower()
+        for concept_name, concept_patterns in patterns:
+            if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in concept_patterns):
+                key = (month, concept_name)
+                counts[key] = counts.get(key, 0) + 1
+    rows = []
+    for (month, concept_name), count in sorted(counts.items()):
+        total = month_totals[month]
+        rows.append(
+            {
+                "thread_month": month,
+                "concept_name": concept_name,
+                count_field: count,
+                "month_total_hiring_posts": total,
+                "share_pct": round((count / total) * 100.0, 2) if total else 0.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def concept_line_chart(frame: pd.DataFrame, y_col: str, title: str, ylabel: str, top_n: int = 6):
+    if frame.empty:
+        return None
+    top_concepts = (
+        frame.groupby("concept_name", as_index=False)[y_col]
+        .sum()
+        .sort_values([y_col, "concept_name"], ascending=[False, True])
+        .head(top_n)["concept_name"]
+        .tolist()
+    )
+    filtered = frame[frame["concept_name"].isin(top_concepts)]
+    pivot = filtered.pivot_table(index="thread_month", columns="concept_name", values=y_col, aggfunc="sum", fill_value=0)
+    months = pivot.index.tolist()
+    positions = list(range(len(months)))
+    fig, ax = plt.subplots(figsize=(10.2, 4.8))
+    for column in pivot.columns:
+        ax.plot(positions, pivot[column], marker="o", linewidth=2.6, label=str(column).replace("_", " "))
+    ax.set_title(title)
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel(ylabel)
+    apply_month_axis(ax, months)
+    ax.legend(frameon=True, ncols=2)
+    ax.grid(alpha=0.25, linestyle="--")
+    return fig
+
+
+def theme_summary(frame: pd.DataFrame) -> pd.DataFrame:
+    rows = concept_rows(frame, PRODUCT_THEME_PATTERNS, "post_count")
+    if rows.empty:
+        return rows
+    return (
+        rows.groupby("concept_name", as_index=False)["post_count"]
+        .sum()
+        .sort_values(["post_count", "concept_name"], ascending=[False, True])
+        .rename(columns={"concept_name": "building_theme"})
+    )
+
+
+def theme_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    rows = concept_rows(frame, PRODUCT_THEME_PATTERNS, "post_count")
+    if rows.empty:
+        return rows.rename(columns={"concept_name": "building_theme"})
+    return rows.rename(columns={"concept_name": "building_theme"})
+
+
+def theme_year_heatmap(theme_frame: pd.DataFrame, year: str):
+    year_frame = theme_frame[theme_frame["thread_month"].astype(str).str.startswith(year)].copy()
+    if year_frame.empty:
+        return None
+    top_themes = (
+        year_frame.groupby("building_theme", as_index=False)["post_count"]
+        .sum()
+        .sort_values(["post_count", "building_theme"], ascending=[False, True])
+        .head(8)
+    )
+    filtered = year_frame[year_frame["building_theme"].isin(top_themes["building_theme"])]
+    pivot = filtered.pivot_table(index="building_theme", columns="thread_month", values="post_count", aggfunc="sum", fill_value=0)
+    pivot = pivot.loc[top_themes["building_theme"]]
+    pretty_columns = [pretty_month_label(value) for value in pivot.columns]
+    pivot.columns = pretty_columns
+    fig, ax = plt.subplots(figsize=(8.8, 4.8), constrained_layout=True)
+    heatmap = sns.heatmap(
+        pivot,
+        cmap="YlGnBu",
+        linewidths=0.7,
+        linecolor="#ece4d8",
+        cbar_kws={"label": "Posts"},
+        annot=True,
+        fmt="g",
+        annot_kws={"fontsize": 9, "fontweight": "bold"},
+        ax=ax,
+    )
+    threshold = float(pivot.to_numpy().max()) * 0.42 if not pivot.empty else 0.0
+    for text, value in zip(heatmap.texts, pivot.to_numpy().flatten(), strict=False):
+        text.set_color("#fffaf0" if float(value) >= threshold else "#102a43")
+    ax.set_title(f"What Companies Are Building ({year})")
+    ax.set_xlabel("Thread month")
+    ax.set_ylabel("Theme")
     return fig
 
 
@@ -269,16 +420,22 @@ def render() -> None:
         ["thread_month", "role_family"]
     )
     remote_trend = month_counts(filtered_posts.assign(remote_status=filtered_posts["remote_status"].fillna("unspecified")), "remote_status", "post_count")
+    ai_trend = concept_rows(filtered_posts, AI_CONCEPT_PATTERNS, "mentioning_post_count")
+    building_theme_summary = theme_summary(filtered_posts)
+    building_theme_rows = theme_rows(filtered_posts)
 
     chart_left, chart_right = st.columns(2)
     with chart_left:
         if not post_trend.empty:
             fig, ax = plt.subplots(figsize=(9, 4.5))
-            ax.plot(post_trend["thread_month"], post_trend["post_count"], marker="o", linewidth=3, color="#183a37")
-            ax.fill_between(post_trend["thread_month"], post_trend["post_count"], color="#d5b26f", alpha=0.25)
+            months = post_trend["thread_month"].tolist()
+            positions = list(range(len(months)))
+            ax.plot(positions, post_trend["post_count"], marker="o", linewidth=3, color="#183a37")
+            ax.fill_between(positions, post_trend["post_count"], color="#d5b26f", alpha=0.25)
             ax.set_title("Hiring Posts Over Time")
             ax.set_xlabel("Thread month")
             ax.set_ylabel("Post count")
+            apply_month_axis(ax, months)
             ax.grid(alpha=0.25, linestyle="--")
             st.pyplot(fig, use_container_width=True)
         else:
@@ -297,6 +454,49 @@ def render() -> None:
         )
     else:
         st.info("No role-family trend available for the current filters.")
+
+    st.subheader("AI Concept Trends")
+    ai_left, ai_right = st.columns(2)
+    with ai_left:
+        ai_count_chart = concept_line_chart(ai_trend, "mentioning_post_count", "AI Concepts Over Time", "Posts mentioning concept")
+        if ai_count_chart is not None:
+            st.pyplot(ai_count_chart, use_container_width=True)
+        else:
+            st.info("No AI concept trend available for the current filters.")
+    with ai_right:
+        ai_share_chart = concept_line_chart(ai_trend, "share_pct", "AI Concept Share Over Time", "Share of selected posts (%)")
+        if ai_share_chart is not None:
+            st.pyplot(ai_share_chart, use_container_width=True)
+        else:
+            st.info("No AI concept share trend available for the current filters.")
+
+    st.subheader("What Companies Are Building")
+    if not building_theme_summary.empty:
+        fig, ax = plt.subplots(figsize=(10.2, 4.8))
+        top = building_theme_summary.head(8).iloc[::-1]
+        ax.barh(
+            top["building_theme"].str.replace("_", " ", regex=False),
+            top["post_count"],
+            color="#264653",
+            edgecolor="#1b1a17",
+        )
+        ax.set_title("Top Product Themes In Current Slice")
+        ax.set_xlabel("Hiring posts matching theme")
+        ax.set_ylabel("Theme")
+        st.pyplot(fig, use_container_width=True)
+
+        year_values = sorted({value.split("-")[0] for value in filtered_posts["thread_month"].dropna().astype(str).tolist()})
+        if year_values:
+            st.markdown("Year-Sliced Theme Heatmaps")
+            columns = st.columns(2)
+            for index, year in enumerate(year_values):
+                chart = theme_year_heatmap(building_theme_rows, year)
+                if chart is None:
+                    continue
+                with columns[index % 2]:
+                    st.pyplot(chart, use_container_width=True)
+    else:
+        st.info("No product-theme signals available for the current filters.")
 
     st.subheader("Filtered Posts")
     preview = filtered_posts[
