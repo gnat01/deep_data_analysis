@@ -9,7 +9,9 @@ if str(SRC_DIR) not in sys.path:
 
 from postgres_kb import (
     ai_concept_timeline_postgres,
+    companies_every_month_postgres,
     DEFAULT_DB_SCHEMA,
+    company_post_length_consistency_postgres,
     company_remote_change_postgres,
     companies_for_role_postgres,
     TABLE_SPECS,
@@ -18,15 +20,19 @@ from postgres_kb import (
     company_role_presence_postgres,
     compensation_history_postgres,
     evidence_lookup_postgres,
+    global_remote_share_postgres,
     insert_sql_for_spec,
     month_filters_sql,
     month_summary_postgres,
+    post_shape_summary_postgres,
     postgres_schema_sql,
     remote_mix_postgres,
     role_requirement_change_summary_postgres,
     role_family_timeline_postgres,
+    remote_first_companies_postgres,
     summarize_search_result,
     row_values_for_spec,
+    companies_with_role_family_pair_postgres,
 )
 
 
@@ -383,3 +389,114 @@ def test_complex_helper_functions_return_expected_shapes(monkeypatch) -> None:
     summary = role_requirement_change_summary_postgres(query="ai engineer")
     assert summary["match_found"] is True
     assert summary["summary_points"]
+
+
+def test_additional_task3_helper_functions_return_expected_shapes(monkeypatch) -> None:
+    class FakeCursor:
+        def __init__(self) -> None:
+            self.description = []
+            self._rows = []
+
+        def execute(self, sql, params):  # noqa: ANN001
+            if "HAVING COUNT(DISTINCT t.thread_month) = 12" in sql:
+                self.description = [
+                    ("company_name",),
+                    ("company_id",),
+                    ("active_month_count",),
+                    ("active_months",),
+                ]
+                self._rows = [("DuckDuckGo", "company_1", 12, [f"2025-{str(i).zfill(2)}" for i in range(1, 13)])]
+            elif "BOOL_AND(p.remote_status = 'remote')" in sql:
+                self.description = [
+                    ("company_name",),
+                    ("company_id",),
+                    ("post_count",),
+                    ("active_months",),
+                ]
+                self._rows = [("DuckDuckGo", "company_1", 5, ["2025-01", "2025-02"])]
+            elif "HAVING COUNT(DISTINCT r.role_family) = 2" in sql:
+                self.description = [
+                    ("thread_month",),
+                    ("company_name",),
+                    ("company_id",),
+                    ("role_families",),
+                    ("matched_role_count",),
+                ]
+                self._rows = [("2025-01", "DuckDuckGo", "company_1", ["data", "engineering"], 4)]
+            elif "global_remote_role_count" in sql:
+                self.description = [
+                    ("year",),
+                    ("remote_role_count",),
+                    ("global_remote_role_count",),
+                ]
+                self._rows = [("2025", 100, 25)]
+            elif "median_post_length_chars" in sql:
+                self.description = [
+                    ("year",),
+                    ("post_count",),
+                    ("mean_post_length_chars",),
+                    ("median_post_length_chars",),
+                    ("p90_post_length_chars",),
+                    ("min_post_length_chars",),
+                    ("max_post_length_chars",),
+                ]
+                self._rows = [("2025", 100, 1200.0, 1000.0, 2000.0, 100, 5000)]
+            else:
+                self.description = [
+                    ("company_name",),
+                    ("company_id",),
+                    ("post_count",),
+                    ("mean_post_length_chars",),
+                    ("stddev_post_length_chars",),
+                    ("min_post_length_chars",),
+                    ("max_post_length_chars",),
+                ]
+                self._rows = [("DuckDuckGo", "company_1", 5, 1200.0, 50.0, 1100, 1300)]
+
+        def fetchall(self):
+            return list(self._rows)
+
+        def fetchone(self):
+            return self._rows[0]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    class FakeConnection:
+        def cursor(self):
+            return FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    monkeypatch.setattr("postgres_kb.connect_postgres", lambda database_url=None: FakeConnection())
+
+    every_month = companies_every_month_postgres(year=2025)
+    assert every_month["row_count"] == 1
+    assert every_month["rows"][0]["active_month_count"] == 12
+
+    remote_first = remote_first_companies_postgres(year=2025)
+    assert remote_first["row_count"] == 1
+    assert remote_first["rows"][0]["company_name"] == "DuckDuckGo"
+
+    role_pair = companies_with_role_family_pair_postgres(role_family_a="data", role_family_b="engineering")
+    assert role_pair["row_count"] == 1
+    assert set(role_pair["rows"][0]["role_families"]) == {"data", "engineering"}
+
+    global_remote = global_remote_share_postgres()
+    assert global_remote["row_count"] == 1
+    assert global_remote["rows"][0]["global_remote_share_pct"] == 25.0
+
+    post_shape = post_shape_summary_postgres()
+    assert post_shape["row_count"] == 1
+    assert post_shape["rows"][0]["year"] == "2025"
+
+    consistency = company_post_length_consistency_postgres()
+    assert consistency["row_count"] == 1
+    assert consistency["rows"][0]["stddev_post_length_chars"] == 50.0

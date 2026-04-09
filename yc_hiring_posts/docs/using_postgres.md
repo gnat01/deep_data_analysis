@@ -301,3 +301,107 @@ python src/cli.py evidence-lookup-postgres \
   --limit 5 \
   --summary-only
 ```
+
+Remote mix:
+
+```bash
+python src/cli.py remote-mix-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --month-from 2025-01 \
+  --month-to 2025-03
+```
+
+Companies whose remote status changed over time:
+
+```bash
+python src/cli.py company-remote-change-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit 5
+```
+
+Compensation history:
+
+```bash
+python src/cli.py compensation-history-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --company "DuckDuckGo" \
+  --month-from 2025-09 \
+  --month-to 2026-01 \
+  --limit 3
+```
+
+AI concept timeline:
+
+```bash
+python src/cli.py ai-concept-timeline-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --concept-name agents \
+  --month-from 2025-01 \
+  --month-to 2026-04 \
+  --limit-evidence 3
+```
+
+Requirement-change summary:
+
+```bash
+python src/cli.py role-requirement-change-summary-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --query "AI Engineer" \
+  --month-from 2024-01 \
+  --month-to 2026-04 \
+  --limit-evidence 4
+```
+
+Companies posting every month in a year:
+
+```bash
+python src/cli.py companies-every-month-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --year 2025
+```
+
+Remote-first companies in a year:
+
+```bash
+python src/cli.py remote-first-companies-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --year 2025 \
+  --min-posts 2
+```
+
+Companies hiring across two role families:
+
+```bash
+python src/cli.py companies-role-pair-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --role-family-a engineering \
+  --role-family-b ml_ai \
+  --month-from 2025-01 \
+  --month-to 2025-12 \
+  --limit 10
+```
+
+Global-remote share by year:
+
+```bash
+python src/cli.py global-remote-share-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp"
+```
+
+Post-shape summary:
+
+```bash
+python src/cli.py post-shape-summary-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp"
+```
+
+Most length-consistent companies:
+
+```bash
+python src/cli.py company-post-length-consistency-postgres \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --min-posts 3 \
+  --limit 10
+```

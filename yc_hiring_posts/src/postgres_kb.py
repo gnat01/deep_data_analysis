@@ -1197,3 +1197,266 @@ def role_requirement_change_summary_postgres(
         "summary_points": summary_points,
         "evidence_rows": evidence_rows,
     }
+
+
+def companies_every_month_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    year: int,
+) -> dict[str, object]:
+    """Return companies that posted in every month of a given year."""
+
+    month_from = f"{year}-01"
+    month_to = f"{year}-12"
+    params: list[object] = [month_from, month_to]
+    sql = f"""
+        SELECT
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            COUNT(DISTINCT t.thread_month) AS active_month_count,
+            array_remove(array_agg(DISTINCT t.thread_month ORDER BY t.thread_month), NULL) AS active_months
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE p.is_hiring_post = TRUE
+          AND t.thread_month >= %s
+          AND t.thread_month <= %s
+        GROUP BY coalesce(c.company_name_observed_preferred, p.company_name_observed), p.company_id
+        HAVING COUNT(DISTINCT t.thread_month) = 12
+        ORDER BY company_name
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "companies_every_month",
+        "schema": schema,
+        "filters": {"year": year},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def remote_first_companies_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    year: int,
+    min_posts: int = 2,
+) -> dict[str, object]:
+    """Return companies whose posts in a year are exclusively remote."""
+
+    month_from = f"{year}-01"
+    month_to = f"{year}-12"
+    params: list[object] = [month_from, month_to, min_posts]
+    sql = f"""
+        SELECT
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            COUNT(DISTINCT p.post_id) AS post_count,
+            array_remove(array_agg(DISTINCT t.thread_month ORDER BY t.thread_month), NULL) AS active_months
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE p.is_hiring_post = TRUE
+          AND t.thread_month >= %s
+          AND t.thread_month <= %s
+        GROUP BY coalesce(c.company_name_observed_preferred, p.company_name_observed), p.company_id
+        HAVING COUNT(DISTINCT p.post_id) >= %s
+           AND BOOL_AND(p.remote_status = 'remote')
+        ORDER BY post_count DESC, company_name
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "remote_first_companies",
+        "schema": schema,
+        "filters": {"year": year, "min_posts": min_posts},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def companies_with_role_family_pair_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    role_family_a: str,
+    role_family_b: str,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    limit: int = 50,
+) -> dict[str, object]:
+    """Return company-months where both role families appeared."""
+
+    params: list[object] = [role_family_a, role_family_b]
+    where_clauses = ["p.is_hiring_post = TRUE", "r.role_family IN (%s, %s)"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    params.append(limit)
+    sql = f"""
+        SELECT
+            t.thread_month,
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            array_remove(array_agg(DISTINCT r.role_family ORDER BY r.role_family), NULL) AS role_families,
+            COUNT(DISTINCT r.role_id) AS matched_role_count
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = coalesce(r.company_id, p.company_id)
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY t.thread_month, coalesce(c.company_name_observed_preferred, p.company_name_observed), p.company_id
+        HAVING COUNT(DISTINCT r.role_family) = 2
+        ORDER BY t.thread_month, company_name
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "companies_with_role_family_pair",
+        "schema": schema,
+        "filters": {"role_family_a": role_family_a, "role_family_b": role_family_b, "month_from": month_from, "month_to": month_to, "limit": limit},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def global_remote_share_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+) -> dict[str, object]:
+    """Estimate share of global-remote roles among remote roles using location text heuristics."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE", "r.role_remote_status = 'remote'"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            substring(t.thread_month from 1 for 4) AS year,
+            COUNT(DISTINCT r.role_id) AS remote_role_count,
+            COUNT(DISTINCT r.role_id) FILTER (
+                WHERE coalesce(r.role_location_text, '') ~* '(global|worldwide|anywhere|any time zone|all time zones)'
+            ) AS global_remote_role_count
+        FROM {schema}.roles r
+        JOIN {schema}.posts p ON p.post_id = r.post_id
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY substring(t.thread_month from 1 for 4)
+        ORDER BY year
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    for row in rows:
+        total = int(row["remote_role_count"] or 0)
+        global_count = int(row["global_remote_role_count"] or 0)
+        row["global_remote_share_pct"] = round((100.0 * global_count / total), 2) if total else 0.0
+    return {
+        "entity": "global_remote_share",
+        "schema": schema,
+        "filters": {"month_from": month_from, "month_to": month_to},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def post_shape_summary_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+) -> dict[str, object]:
+    """Return year-by-year post-length summary statistics."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    sql = f"""
+        SELECT
+            substring(t.thread_month from 1 for 4) AS year,
+            COUNT(*) AS post_count,
+            ROUND(AVG(char_length(p.post_text_clean)), 2) AS mean_post_length_chars,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY char_length(p.post_text_clean)) AS median_post_length_chars,
+            PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY char_length(p.post_text_clean)) AS p90_post_length_chars,
+            MIN(char_length(p.post_text_clean)) AS min_post_length_chars,
+            MAX(char_length(p.post_text_clean)) AS max_post_length_chars
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY substring(t.thread_month from 1 for 4)
+        ORDER BY year
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "post_shape_summary",
+        "schema": schema,
+        "filters": {"month_from": month_from, "month_to": month_to},
+        "row_count": len(rows),
+        "rows": rows,
+    }
+
+
+def company_post_length_consistency_postgres(
+    *,
+    database_url: str | None = None,
+    schema: str = DEFAULT_DB_SCHEMA,
+    month_from: str | None = None,
+    month_to: str | None = None,
+    min_posts: int = 3,
+    limit: int = 50,
+) -> dict[str, object]:
+    """Return companies with consistent or variable post lengths across time."""
+
+    params: list[object] = []
+    where_clauses = ["p.is_hiring_post = TRUE"]
+    where_clauses.extend(month_filters_sql("t.thread_month", month_from, month_to, params))
+    params.extend([min_posts, limit])
+    sql = f"""
+        SELECT
+            coalesce(c.company_name_observed_preferred, p.company_name_observed) AS company_name,
+            p.company_id,
+            COUNT(*) AS post_count,
+            ROUND(AVG(char_length(p.post_text_clean)), 2) AS mean_post_length_chars,
+            ROUND(STDDEV_POP(char_length(p.post_text_clean)), 2) AS stddev_post_length_chars,
+            MIN(char_length(p.post_text_clean)) AS min_post_length_chars,
+            MAX(char_length(p.post_text_clean)) AS max_post_length_chars
+        FROM {schema}.posts p
+        JOIN {schema}.threads t ON t.thread_id = p.thread_id
+        LEFT JOIN {schema}.companies c ON c.company_id = p.company_id
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY coalesce(c.company_name_observed_preferred, p.company_name_observed), p.company_id
+        HAVING COUNT(*) >= %s
+        ORDER BY stddev_post_length_chars ASC NULLS LAST, post_count DESC, company_name
+        LIMIT %s
+    """
+    with connect_postgres(database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]
+    return {
+        "entity": "company_post_length_consistency",
+        "schema": schema,
+        "filters": {"month_from": month_from, "month_to": month_to, "min_posts": min_posts, "limit": limit},
+        "row_count": len(rows),
+        "rows": rows,
+    }

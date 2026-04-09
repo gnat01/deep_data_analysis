@@ -111,12 +111,24 @@ These helpers should stay structured and evidence-linked. Natural-language query
 
 The third task should expand helper coverage across the largest remaining question families.
 
-First helper block:
+Current helper blocks now in place:
 
 - month summaries and month rankings
 - role-family timelines
 - companies-for-role lookups
 - evidence lookup helpers
+- remote-mix helpers
+- remote-change helpers
+- compensation-history helpers
+- AI concept timeline helpers
+- first requirement-change summarisation helper
+- recurring-company / post-shape helpers:
+  - companies posting every month in a year
+  - remote-first companies in a year
+  - companies hiring across two role families in a range
+  - global-remote share by year
+  - post-length summary by year
+  - company post-length consistency
 
 These should stay:
 
@@ -124,3 +136,32 @@ These should stay:
 - PostgreSQL backed
 - evidence linked
 - reusable by later orchestration and NL layers
+
+### Task 3 Commands Now Available
+
+- `month-summary-postgres`
+- `role-family-timeline-postgres`
+- `companies-for-role-postgres`
+- `evidence-lookup-postgres`
+- `remote-mix-postgres`
+- `company-remote-change-postgres`
+- `compensation-history-postgres`
+- `ai-concept-timeline-postgres`
+- `role-requirement-change-summary-postgres`
+- `companies-every-month-postgres`
+- `remote-first-companies-postgres`
+- `companies-role-pair-postgres`
+- `global-remote-share-postgres`
+- `post-shape-summary-postgres`
+- `company-post-length-consistency-postgres`
+
+### Remaining Task 3 Work
+
+Task 3 is now well underway, but not complete.
+
+Most likely remaining families:
+
+- stronger comparative helpers
+- geography-aware helpers only where the data truly supports them
+- tighter summarisation quality for change questions
+- helper composition patterns that can support Step 20 routing

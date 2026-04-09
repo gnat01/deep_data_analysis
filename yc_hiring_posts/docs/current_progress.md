@@ -33,19 +33,20 @@ This file is the current handoff note for the YC / HN hiring-posts project.
   - Task 1 is done: raw PostgreSQL retrieval
   - Task 2 is done: first answer-oriented KB helpers
   - question-bank classification layer is built
+  - Task 3 is underway with broad helper coverage now live
 
 ## Important Project Files
 
 ### Planning / Docs
 
-- [`BUILD_PLAN.md`](./BUILD_PLAN.md)
+- [`BUILD_PLAN.md`](../BUILD_PLAN.md)
 - [`HOW_TO_RUN.md`](./HOW_TO_RUN.md)
 - [`using_postgres.md`](./using_postgres.md)
 - [`possible_qs.md`](./possible_qs.md)
-- [`docs/step17.md`](./docs/step17.md)
-- [`docs/step19.md`](./docs/step19.md)
-- [`docs/question_catalog.md`](./docs/question_catalog.md)
-- [`docs/question_catalog.json`](./docs/question_catalog.json)
+- [`step17.md`](./step17.md)
+- [`step19.md`](./step19.md)
+- [`question_catalog.md`](./question_catalog.md)
+- [`question_catalog.json`](./question_catalog.json)
 
 ### Core Recent Code
 
@@ -76,8 +77,8 @@ Loaded core tables:
 Reference docs:
 
 - [`using_postgres.md`](./using_postgres.md)
-- [`docs/postgres_local_setup.md`](./docs/postgres_local_setup.md)
-- [`config/postgres.local.env`](./config/postgres.local.env)
+- [`postgres_local_setup.md`](./postgres_local_setup.md)
+- [`config/postgres.local.env`](../config/postgres.local.env)
 
 ## Step 19 Progress
 
@@ -118,6 +119,41 @@ These support:
 - company timeline questions
 - yes/no role-presence questions with matched months and evidence
 
+#### Task 3: broader helper coverage now live
+
+CLI commands:
+
+- `month-summary-postgres`
+- `role-family-timeline-postgres`
+- `companies-for-role-postgres`
+- `evidence-lookup-postgres`
+- `remote-mix-postgres`
+- `company-remote-change-postgres`
+- `compensation-history-postgres`
+- `ai-concept-timeline-postgres`
+- `role-requirement-change-summary-postgres`
+- `companies-every-month-postgres`
+- `remote-first-companies-postgres`
+- `companies-role-pair-postgres`
+- `global-remote-share-postgres`
+- `post-shape-summary-postgres`
+- `company-post-length-consistency-postgres`
+
+These now cover:
+
+- month summaries
+- role timelines
+- company lookup by role
+- evidence retrieval
+- remote-mix questions
+- company remote-status changes
+- compensation history
+- AI concept timelines
+- requirement-change summarisation
+- recurring-company patterns
+- global-remote heuristics
+- post-shape / consistency questions
+
 #### Question classification layer
 
 Implemented in:
@@ -139,20 +175,16 @@ Purpose:
 
 ## What Still Needs To Be Done
 
-### Step 19 Task 3
+### Step 19 Task 3 Remaining Work
 
-Build the broader helper layer from the annotated question catalog.
+Task 3 is materially underway, but not complete.
 
-Most important uncovered helper families:
+Most important remaining areas:
 
-- month summary / month rankings
-- role-family timelines
-- companies-for-role
-- remote-mix helpers
-- AI concept timeline helpers
-- compensation-history helpers
-- evidence lookup helpers
-- summarisation helpers -- this is summarisation that uses the text FROM the hiring posts only
+- stronger comparative helpers
+- tighter summarisation quality
+- geography helpers only where data quality really supports them
+- wider question-bank coverage against the still-uncovered families
 
 ### Step 19 Task 4
 
@@ -178,16 +210,15 @@ Then:
 
 When restarting, the next concrete move is:
 
-- begin **Step 19 Task 3**
+- continue **Step 19 Task 3**
 - use [`docs/question_catalog.md`](./docs/question_catalog.md) as the spec
 
 Priority order:
 
-1. month / ranking helpers
-2. role / company lookup helpers
-3. remote / compensation helpers
-4. AI concept and evidence helpers
-5. All other helpers
+1. stronger comparative helpers
+2. tighter summary helpers
+3. question-family gaps from the catalog
+4. helper composition patterns for Step 20
 
 
 ## Notes

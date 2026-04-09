@@ -16,22 +16,28 @@ from parse import parse_and_write_thread_posts
 from postgres_kb import (
     ai_concept_timeline_postgres,
     company_activity_timeline_postgres,
+    companies_every_month_postgres,
+    company_post_length_consistency_postgres,
     company_remote_change_postgres,
     companies_for_role_postgres,
     compensation_history_postgres,
     company_role_presence_postgres,
     DEFAULT_DB_SCHEMA,
     evidence_lookup_postgres,
+    global_remote_share_postgres,
     initialize_postgres_kb,
     inspect_postgres_kb,
     load_postgres_kb,
     month_summary_postgres,
+    post_shape_summary_postgres,
     remote_mix_postgres,
     role_requirement_change_summary_postgres,
     role_family_timeline_postgres,
+    remote_first_companies_postgres,
     search_posts_postgres,
     search_roles_postgres,
     summarize_search_result,
+    companies_with_role_family_pair_postgres,
 )
 from question_catalog import build_question_catalog, possible_questions_path, write_question_catalog
 from roles import extract_and_write_roles
@@ -277,6 +283,64 @@ def build_parser() -> argparse.ArgumentParser:
     req_summary_parser.add_argument("--month-from", default=None)
     req_summary_parser.add_argument("--month-to", default=None)
     req_summary_parser.add_argument("--limit-evidence", type=int, default=8)
+
+    every_month_parser = subparsers.add_parser(
+        "companies-every-month-postgres",
+        help="Return companies that posted in every month of a given year.",
+    )
+    every_month_parser.add_argument("--database-url", default=None)
+    every_month_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    every_month_parser.add_argument("--year", type=int, required=True)
+
+    remote_first_parser = subparsers.add_parser(
+        "remote-first-companies-postgres",
+        help="Return companies whose posts in a year are exclusively remote.",
+    )
+    remote_first_parser.add_argument("--database-url", default=None)
+    remote_first_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    remote_first_parser.add_argument("--year", type=int, required=True)
+    remote_first_parser.add_argument("--min-posts", type=int, default=2)
+
+    role_pair_parser = subparsers.add_parser(
+        "companies-role-pair-postgres",
+        help="Return company-months where both role families appeared.",
+    )
+    role_pair_parser.add_argument("--database-url", default=None)
+    role_pair_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    role_pair_parser.add_argument("--role-family-a", required=True)
+    role_pair_parser.add_argument("--role-family-b", required=True)
+    role_pair_parser.add_argument("--month-from", default=None)
+    role_pair_parser.add_argument("--month-to", default=None)
+    role_pair_parser.add_argument("--limit", type=int, default=50)
+
+    global_remote_parser = subparsers.add_parser(
+        "global-remote-share-postgres",
+        help="Estimate global-remote share among remote roles by year.",
+    )
+    global_remote_parser.add_argument("--database-url", default=None)
+    global_remote_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    global_remote_parser.add_argument("--month-from", default=None)
+    global_remote_parser.add_argument("--month-to", default=None)
+
+    post_shape_parser = subparsers.add_parser(
+        "post-shape-summary-postgres",
+        help="Return year-by-year post-length summary statistics.",
+    )
+    post_shape_parser.add_argument("--database-url", default=None)
+    post_shape_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    post_shape_parser.add_argument("--month-from", default=None)
+    post_shape_parser.add_argument("--month-to", default=None)
+
+    post_length_consistency_parser = subparsers.add_parser(
+        "company-post-length-consistency-postgres",
+        help="Return companies with consistent or variable post lengths.",
+    )
+    post_length_consistency_parser.add_argument("--database-url", default=None)
+    post_length_consistency_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    post_length_consistency_parser.add_argument("--month-from", default=None)
+    post_length_consistency_parser.add_argument("--month-to", default=None)
+    post_length_consistency_parser.add_argument("--min-posts", type=int, default=3)
+    post_length_consistency_parser.add_argument("--limit", type=int, default=50)
 
     validate_parser = subparsers.add_parser(
         "validate-thread-raw",
@@ -582,6 +646,70 @@ def main() -> int:
             month_from=args.month_from,
             month_to=args.month_to,
             limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "companies-every-month-postgres":
+        result = companies_every_month_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            year=args.year,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "remote-first-companies-postgres":
+        result = remote_first_companies_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            year=args.year,
+            min_posts=args.min_posts,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "companies-role-pair-postgres":
+        result = companies_with_role_family_pair_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            role_family_a=args.role_family_a,
+            role_family_b=args.role_family_b,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            limit=args.limit,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "global-remote-share-postgres":
+        result = global_remote_share_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            month_from=args.month_from,
+            month_to=args.month_to,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "post-shape-summary-postgres":
+        result = post_shape_summary_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            month_from=args.month_from,
+            month_to=args.month_to,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "company-post-length-consistency-postgres":
+        result = company_post_length_consistency_postgres(
+            database_url=args.database_url,
+            schema=args.schema,
+            month_from=args.month_from,
+            month_to=args.month_to,
+            min_posts=args.min_posts,
+            limit=args.limit,
         )
         print(json.dumps(result, indent=2, default=str))
         return 0
