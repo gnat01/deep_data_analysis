@@ -36,4 +36,4 @@ It is intended to:
 
 ## Current Status
 
-The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, V1 core-table materialization, recurring analytical outputs, upgraded Step 16 visuals, and an interactive Streamlit explorer.
+The repository now contains planning artifacts, a verified source index, raw thread fetch and parse logic, raw-schema validation, a normalized post parser, a first-pass role extractor, conservative company normalization, V1 core-table materialization, recurring analytical outputs, upgraded Step 16 visuals, company-level semantic spread analysis, and an interactive Streamlit explorer.

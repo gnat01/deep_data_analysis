@@ -226,6 +226,8 @@ Once the structured tables are stable, produce recurring outputs for:
 - remote vs non-remote trends
 - role-family trends by month
 - recurring-company hiring patterns
+- company-level semantic spread / sameness analysis
+- interactive exploration views over the processed analytics
 
 These outputs should answer the first generation of business questions directly from tables.
 

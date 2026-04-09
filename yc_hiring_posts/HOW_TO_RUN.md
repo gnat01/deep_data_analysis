@@ -307,6 +307,7 @@ data/processed/analytics/distinct_roles_by_month.csv
 data/processed/analytics/ai_concepts_by_month.csv
 data/processed/analytics/ai_concepts_by_role_family.csv
 data/processed/analytics/company_building_themes_by_month.csv
+data/processed/analytics/company_semantic_spread.csv
 data/processed/analytics/recurring_company_hiring_patterns.csv
 data/processed/analytics/analytics_manifest.json
 data/processed/analytics/visuals/
@@ -324,6 +325,7 @@ sed -n '1,10p' data/processed/analytics/distinct_roles_by_month.csv
 sed -n '1,14p' data/processed/analytics/ai_concepts_by_month.csv
 sed -n '1,14p' data/processed/analytics/ai_concepts_by_role_family.csv
 sed -n '1,14p' data/processed/analytics/company_building_themes_by_month.csv
+sed -n '1,14p' data/processed/analytics/company_semantic_spread.csv
 sed -n '1,12p' data/processed/analytics/recurring_company_hiring_patterns.csv
 ls data/processed/analytics/visuals
 ```
@@ -348,6 +350,8 @@ data/processed/analytics/visuals/company_building_themes_2024.png
 data/processed/analytics/visuals/company_building_themes_2025.png
 data/processed/analytics/visuals/company_building_themes_2026.png
 data/processed/analytics/visuals/company_building_themes_timeseries.png
+data/processed/analytics/visuals/company_semantic_spread.png
+data/processed/analytics/visuals/company_variation_histograms/
 data/processed/analytics/visuals/recurring_company_hiring_patterns.png
 ```
 
@@ -374,7 +378,14 @@ It then shows:
 - filtered AI concept trends
 - AI concepts by role family
 - a what-companies-are-building summary
+- a `Company Variation` tab with semantic spread metrics, pairwise-angle histograms, and company-level theme terms
 - a searchable post preview table
+
+Static histogram copies are also written locally under:
+
+```text
+data/processed/analytics/visuals/company_variation_histograms/
+```
 
 ## Recommended End-To-End Order For One New Month
 

@@ -5,11 +5,13 @@ from __future__ import annotations
 import re
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import streamlit as st
+from sklearn.feature_extraction.text import TfidfVectorizer
 
-from analytics import AI_CONCEPT_PATTERNS, PRODUCT_THEME_PATTERNS
+from analytics import AI_CONCEPT_PATTERNS, PRODUCT_THEME_PATTERNS, pairwise_semantic_geometry, semantic_angle_metrics
 from storage import processed_data_dir
 
 
@@ -454,6 +456,86 @@ def build_insights(filtered_posts: pd.DataFrame, filtered_roles: pd.DataFrame) -
     return insights
 
 
+@st.cache_data(show_spinner=False)
+def load_company_spread_table() -> pd.DataFrame:
+    path = processed_data_dir() / "analytics" / "company_semantic_spread.csv"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def company_variation_rows(frame: pd.DataFrame, top_n: int = 60) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(
+            columns=[
+                "company_display",
+                "post_count",
+                "mean_pairwise_angle_deg",
+                "median_pairwise_angle_deg",
+                "p90_pairwise_angle_deg",
+                "max_pairwise_angle_deg",
+                "exact_reuse_share",
+            ]
+        )
+    top_companies = frame["company_display"].value_counts().head(top_n).index.tolist()
+    rows: list[dict[str, object]] = []
+    for company_name in top_companies:
+        company_posts = frame[frame["company_display"] == company_name].sort_values("thread_month")
+        texts = company_posts["post_text_clean"].fillna("").astype(str).tolist()
+        metrics = semantic_angle_metrics(texts)
+        rows.append(
+            {
+                "company_display": company_name,
+                "post_count": len(company_posts),
+                "mean_pairwise_angle_deg": metrics["mean_pairwise_angle_deg"],
+                "median_pairwise_angle_deg": metrics["median_pairwise_angle_deg"],
+                "p90_pairwise_angle_deg": metrics["p90_pairwise_angle_deg"],
+                "max_pairwise_angle_deg": metrics["max_pairwise_angle_deg"],
+                "exact_reuse_share": metrics["exact_reuse_share"],
+            }
+        )
+    return pd.DataFrame(rows).sort_values(
+        ["mean_pairwise_angle_deg", "post_count", "company_display"], ascending=[True, False, True]
+    )
+
+
+def company_theme_terms(texts: list[str], top_n: int = 12) -> list[str]:
+    cleaned = [text.strip() for text in texts if text and text.strip()]
+    if len(cleaned) < 2:
+        return []
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=3000)
+    try:
+        matrix = vectorizer.fit_transform(cleaned)
+    except ValueError:
+        return []
+    weights = np.asarray(matrix.mean(axis=0)).ravel()
+    terms = vectorizer.get_feature_names_out()
+    ranking = np.argsort(weights)[::-1]
+    selected: list[str] = []
+    for index in ranking:
+        term = str(terms[index])
+        if len(term) < 3:
+            continue
+        selected.append(term)
+        if len(selected) == top_n:
+            break
+    return selected
+
+
+def company_angle_histogram(company_posts: pd.DataFrame):
+    texts = company_posts["post_text_clean"].fillna("").astype(str).tolist()
+    angles, _ = pairwise_semantic_geometry(texts) if len(texts) >= 2 else ([], [])
+    if not angles:
+        return None
+    fig, ax = plt.subplots(figsize=(12.5, 5.4))
+    ax.hist(angles, bins=min(16, max(6, len(angles))), color="#7f5539", edgecolor="#1f1d1a", alpha=0.88)
+    ax.set_title("Pairwise Semantic Angle Distribution")
+    ax.set_xlabel("Angle between posts (degrees)")
+    ax.set_ylabel("Pair count")
+    ax.grid(alpha=0.22, linestyle="--")
+    return fig
+
+
 def render() -> None:
     app_style()
     posts, roles, companies, threads = load_data()
@@ -504,139 +586,248 @@ def render() -> None:
         selected_remote_statuses,
     )
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Hiring posts", f"{len(filtered_posts):,}")
-    c2.metric("Extracted roles", f"{len(filtered_roles):,}")
-    c3.metric("Active months", f"{filtered_posts['thread_month'].nunique() if not filtered_posts.empty else 0}")
-    c4.metric("Companies", f"{filtered_posts['company_display'].nunique() if not filtered_posts.empty else 0}")
+    tabs = st.tabs(["Slice Explorer", "Company Variation"])
 
-    insights = build_insights(filtered_posts, filtered_roles)
-    st.subheader("Insights")
-    for insight in insights:
-        st.write(f"- {insight}")
+    with tabs[0]:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Hiring posts", f"{len(filtered_posts):,}")
+        c2.metric("Extracted roles", f"{len(filtered_roles):,}")
+        c3.metric("Active months", f"{filtered_posts['thread_month'].nunique() if not filtered_posts.empty else 0}")
+        c4.metric("Companies", f"{filtered_posts['company_display'].nunique() if not filtered_posts.empty else 0}")
 
-    post_trend = filtered_posts.groupby("thread_month").size().reset_index(name="post_count").sort_values("thread_month")
-    role_trend = filtered_roles.groupby(["thread_month", "role_family"]).size().reset_index(name="role_count").sort_values(
-        ["thread_month", "role_family"]
-    )
-    remote_trend = month_counts(filtered_posts.assign(remote_status=filtered_posts["remote_status"].fillna("unspecified")), "remote_status", "post_count")
-    ai_trend = concept_rows(filtered_posts, AI_CONCEPT_PATTERNS, "mentioning_post_count")
-    ai_role_family_trend = ai_role_family_rows(filtered_roles)
-    building_theme_summary = theme_summary(filtered_posts)
-    building_theme_rows = theme_rows(filtered_posts)
+        insights = build_insights(filtered_posts, filtered_roles)
+        st.subheader("Insights")
+        for insight in insights:
+            st.write(f"- {insight}")
 
-    chart_left, chart_right = st.columns(2)
-    with chart_left:
-        if not post_trend.empty:
-            fig, ax = plt.subplots(figsize=(12.6, 5.4))
-            months = post_trend["thread_month"].tolist()
-            positions = list(range(len(months)))
-            ax.plot(positions, post_trend["post_count"], marker="o", linewidth=3, color="#183a37")
-            ax.fill_between(positions, post_trend["post_count"], color="#d5b26f", alpha=0.25)
-            ax.set_title("Hiring Posts Over Time")
-            ax.set_xlabel("Thread month")
-            ax.set_ylabel("Post count")
-            apply_month_axis(ax, months)
-            ax.grid(alpha=0.25, linestyle="--")
+        post_trend = filtered_posts.groupby("thread_month").size().reset_index(name="post_count").sort_values("thread_month")
+        role_trend = filtered_roles.groupby(["thread_month", "role_family"]).size().reset_index(name="role_count").sort_values(
+            ["thread_month", "role_family"]
+        )
+        remote_trend = month_counts(filtered_posts.assign(remote_status=filtered_posts["remote_status"].fillna("unspecified")), "remote_status", "post_count")
+        ai_trend = concept_rows(filtered_posts, AI_CONCEPT_PATTERNS, "mentioning_post_count")
+        ai_role_family_trend = ai_role_family_rows(filtered_roles)
+        building_theme_summary = theme_summary(filtered_posts)
+        building_theme_rows = theme_rows(filtered_posts)
+
+        chart_left, chart_right = st.columns(2)
+        with chart_left:
+            if not post_trend.empty:
+                fig, ax = plt.subplots(figsize=(12.6, 5.4))
+                months = post_trend["thread_month"].tolist()
+                positions = list(range(len(months)))
+                ax.plot(positions, post_trend["post_count"], marker="o", linewidth=3, color="#183a37")
+                ax.fill_between(positions, post_trend["post_count"], color="#d5b26f", alpha=0.25)
+                ax.set_title("Hiring Posts Over Time")
+                ax.set_xlabel("Thread month")
+                ax.set_ylabel("Post count")
+                apply_month_axis(ax, months)
+                ax.grid(alpha=0.25, linestyle="--")
+                st.pyplot(fig, use_container_width=True)
+            else:
+                st.info("No hiring posts to plot for the current filters.")
+        with chart_right:
+            if not remote_trend.empty:
+                st.pyplot(stacked_pct_chart(remote_trend), use_container_width=True)
+            else:
+                st.info("No remote-status trend available for the current filters.")
+
+        st.subheader("Role Family Time Series")
+        if not role_trend.empty:
+            st.pyplot(
+                line_chart(role_trend, "thread_month", "role_count", "role_family", "Role Families Over Time", "Role count"),
+                use_container_width=True,
+            )
+        else:
+            st.info("No role-family trend available for the current filters.")
+
+        st.subheader("AI Concept Trends")
+        ai_left, ai_right = st.columns(2)
+        with ai_left:
+            ai_count_chart = concept_line_chart(ai_trend, "mentioning_post_count", "AI Concepts Over Time", "Posts mentioning concept")
+            if ai_count_chart is not None:
+                st.pyplot(ai_count_chart, use_container_width=True)
+            else:
+                st.info("No AI concept trend available for the current filters.")
+        with ai_right:
+            ai_share_chart = concept_line_chart(ai_trend, "share_pct", "AI Concept Share Over Time", "Share of selected posts (%)")
+            if ai_share_chart is not None:
+                st.pyplot(ai_share_chart, use_container_width=True)
+            else:
+                st.info("No AI concept share trend available for the current filters.")
+
+        st.subheader("AI Concepts By Role Family")
+        role_ai_left, role_ai_right = st.columns(2)
+        with role_ai_left:
+            chart = ai_role_family_heatmap(
+                ai_role_family_trend,
+                "role_count",
+                "AI Concepts By Role Family",
+                "Role count",
+            )
+            if chart is not None:
+                st.pyplot(chart, use_container_width=True)
+            else:
+                st.info("No AI role-family concept view available for the current filters.")
+        with role_ai_right:
+            chart = ai_role_family_heatmap(
+                ai_role_family_trend,
+                "role_share_pct",
+                "AI Concept Share By Role Family",
+                "Share of role family (%)",
+            )
+            if chart is not None:
+                st.pyplot(chart, use_container_width=True)
+            else:
+                st.info("No AI role-family share view available for the current filters.")
+
+        st.subheader("What Companies Are Building")
+        if not building_theme_summary.empty:
+            fig, ax = plt.subplots(figsize=(13.2, 5.6))
+            top = building_theme_summary.head(8).iloc[::-1]
+            ax.barh(
+                top["building_theme"].str.replace("_", " ", regex=False),
+                top["post_count"],
+                color="#264653",
+                edgecolor="#1b1a17",
+            )
+            ax.set_title("Top Product Themes In Current Slice")
+            ax.set_xlabel("Hiring posts matching theme")
+            ax.set_ylabel("Theme")
             st.pyplot(fig, use_container_width=True)
-        else:
-            st.info("No hiring posts to plot for the current filters.")
-    with chart_right:
-        if not remote_trend.empty:
-            st.pyplot(stacked_pct_chart(remote_trend), use_container_width=True)
-        else:
-            st.info("No remote-status trend available for the current filters.")
 
-    st.subheader("Role Family Time Series")
-    if not role_trend.empty:
-        st.pyplot(
-            line_chart(role_trend, "thread_month", "role_count", "role_family", "Role Families Over Time", "Role count"),
-            use_container_width=True,
-        )
-    else:
-        st.info("No role-family trend available for the current filters.")
-
-    st.subheader("AI Concept Trends")
-    ai_left, ai_right = st.columns(2)
-    with ai_left:
-        ai_count_chart = concept_line_chart(ai_trend, "mentioning_post_count", "AI Concepts Over Time", "Posts mentioning concept")
-        if ai_count_chart is not None:
-            st.pyplot(ai_count_chart, use_container_width=True)
+            year_values = sorted({value.split("-")[0] for value in filtered_posts["thread_month"].dropna().astype(str).tolist()})
+            if year_values:
+                st.markdown("Year-Sliced Theme Heatmaps")
+                columns = st.columns(2)
+                for index, year in enumerate(year_values):
+                    chart = theme_year_heatmap(building_theme_rows, year)
+                    if chart is None:
+                        continue
+                    with columns[index % 2]:
+                        st.pyplot(chart, use_container_width=True)
         else:
-            st.info("No AI concept trend available for the current filters.")
-    with ai_right:
-        ai_share_chart = concept_line_chart(ai_trend, "share_pct", "AI Concept Share Over Time", "Share of selected posts (%)")
-        if ai_share_chart is not None:
-            st.pyplot(ai_share_chart, use_container_width=True)
+            st.info("No product-theme signals available for the current filters.")
+
+        st.subheader("Sample Of Filtered Posts")
+        preview = sample_filtered_posts(filtered_posts)[
+            [
+                "thread_month",
+                "company_display",
+                "remote_status",
+                "employment_type",
+                "funding",
+                "compensation_text",
+                "location_text",
+            ]
+        ].rename(columns={"company_display": "company_name"})
+        st.dataframe(preview, use_container_width=True, height=320)
+
+    with tabs[1]:
+        window_posts = posts[(posts["is_hiring_post"] == True) & (posts["thread_month"] >= start_month) & (posts["thread_month"] <= end_month)].copy()
+        st.subheader("Company Narrative Variation")
+        st.caption("This view measures how semantically tight or spread out a company's hiring posts are inside the selected month window.")
+
+        variation_rows = company_variation_rows(window_posts, top_n=80)
+        if variation_rows.empty:
+            st.info("No company-level variation view is available for the selected month window.")
         else:
-            st.info("No AI concept share trend available for the current filters.")
+            company_options_variation = variation_rows.sort_values(
+                ["mean_pairwise_angle_deg", "post_count", "company_display"], ascending=[True, False, True]
+            )["company_display"].tolist()
+            selected_company = st.selectbox("Company", company_options_variation, index=0)
+            selected_rows = variation_rows[variation_rows["company_display"] == selected_company].iloc[0]
+            selected_posts = (
+                window_posts[window_posts["company_display"] == selected_company]
+                .sort_values(["thread_month", "post_id"])
+                .copy()
+            )
+            terms = company_theme_terms(selected_posts["post_text_clean"].fillna("").astype(str).tolist())
 
-    st.subheader("AI Concepts By Role Family")
-    role_ai_left, role_ai_right = st.columns(2)
-    with role_ai_left:
-        chart = ai_role_family_heatmap(
-            ai_role_family_trend,
-            "role_count",
-            "AI Concepts By Role Family",
-            "Role count",
-        )
-        if chart is not None:
-            st.pyplot(chart, use_container_width=True)
-        else:
-            st.info("No AI role-family concept view available for the current filters.")
-    with role_ai_right:
-        chart = ai_role_family_heatmap(
-            ai_role_family_trend,
-            "role_share_pct",
-            "AI Concept Share By Role Family",
-            "Share of role family (%)",
-        )
-        if chart is not None:
-            st.pyplot(chart, use_container_width=True)
-        else:
-            st.info("No AI role-family share view available for the current filters.")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Posts", int(selected_rows["post_count"]))
+            m2.metric("Mean Angle", f"{float(selected_rows['mean_pairwise_angle_deg']):.1f}°")
+            m3.metric("Median Angle", f"{float(selected_rows['median_pairwise_angle_deg']):.1f}°")
+            m4.metric("Exact Reuse", f"{float(selected_rows['exact_reuse_share']) * 100:.1f}%")
+            st.caption("Angle interpretation for this view: 0° means nearly identical text, 90° means semantically unrelated in this non-negative vector space.")
 
-    st.subheader("What Companies Are Building")
-    if not building_theme_summary.empty:
-        fig, ax = plt.subplots(figsize=(13.2, 5.6))
-        top = building_theme_summary.head(8).iloc[::-1]
-        ax.barh(
-            top["building_theme"].str.replace("_", " ", regex=False),
-            top["post_count"],
-            color="#264653",
-            edgecolor="#1b1a17",
-        )
-        ax.set_title("Top Product Themes In Current Slice")
-        ax.set_xlabel("Hiring posts matching theme")
-        ax.set_ylabel("Theme")
-        st.pyplot(fig, use_container_width=True)
+            left, right = st.columns([1.25, 1.0])
+            with left:
+                hist = company_angle_histogram(selected_posts)
+                if hist is not None:
+                    st.pyplot(hist, use_container_width=True)
+                else:
+                    st.info("Need at least two posts from the company in the selected month window to build a pairwise-angle histogram.")
+            with right:
+                timeline = selected_posts.groupby("thread_month").size().reset_index(name="post_count").sort_values("thread_month")
+                if not timeline.empty:
+                    fig, ax = plt.subplots(figsize=(12.2, 5.1))
+                    months = timeline["thread_month"].tolist()
+                    positions = list(range(len(months)))
+                    ax.plot(positions, timeline["post_count"], marker="o", linewidth=2.8, color="#264653")
+                    ax.set_title("Company Posts Over Time")
+                    ax.set_xlabel("Thread month")
+                    ax.set_ylabel("Post count")
+                    apply_month_axis(ax, months)
+                    ax.grid(alpha=0.25, linestyle="--")
+                    st.pyplot(fig, use_container_width=True)
 
-        year_values = sorted({value.split("-")[0] for value in filtered_posts["thread_month"].dropna().astype(str).tolist()})
-        if year_values:
-            st.markdown("Year-Sliced Theme Heatmaps")
-            columns = st.columns(2)
-            for index, year in enumerate(year_values):
-                chart = theme_year_heatmap(building_theme_rows, year)
-                if chart is None:
-                    continue
-                with columns[index % 2]:
-                    st.pyplot(chart, use_container_width=True)
-    else:
-        st.info("No product-theme signals available for the current filters.")
+            st.markdown("Central Themes")
+            if terms:
+                st.write(", ".join(f"`{term}`" for term in terms))
+            else:
+                st.write("Not enough text variation to extract stable theme terms.")
 
-    st.subheader("Sample Of Filtered Posts")
-    preview = sample_filtered_posts(filtered_posts)[
-        [
-            "thread_month",
-            "company_display",
-            "remote_status",
-            "employment_type",
-            "funding",
-            "compensation_text",
-            "location_text",
-        ]
-    ].rename(columns={"company_display": "company_name"})
-    st.dataframe(preview, use_container_width=True, height=320)
+            st.markdown("Sample Company Posts")
+            company_sample = sample_filtered_posts(selected_posts, max_rows=6)[
+                [
+                    "thread_month",
+                    "remote_status",
+                    "employment_type",
+                    "compensation_text",
+                    "funding",
+                    "location_text",
+                    "post_text_clean",
+                ]
+            ].rename(columns={"post_text_clean": "post_text"})
+            st.dataframe(company_sample, use_container_width=True, height=280)
+
+            st.markdown("Companies Ordered By Variation In Current Window")
+            st.dataframe(
+                variation_rows[
+                    [
+                        "company_display",
+                        "post_count",
+                        "mean_pairwise_angle_deg",
+                        "median_pairwise_angle_deg",
+                        "p90_pairwise_angle_deg",
+                        "exact_reuse_share",
+                    ]
+                ].rename(
+                    columns={
+                        "company_display": "company_name",
+                        "mean_pairwise_angle_deg": "mean_angle_deg",
+                        "median_pairwise_angle_deg": "median_angle_deg",
+                        "p90_pairwise_angle_deg": "p90_angle_deg",
+                    }
+                ).head(20),
+                use_container_width=True,
+                height=320,
+            )
+
+            with st.expander("Full Selected Company Posts"):
+                company_preview = selected_posts[
+                    [
+                        "thread_month",
+                        "remote_status",
+                        "employment_type",
+                        "compensation_text",
+                        "funding",
+                        "location_text",
+                        "post_text_clean",
+                    ]
+                ].rename(columns={"post_text_clean": "post_text"})
+                st.dataframe(company_preview, use_container_width=True, height=320)
 
 
 if __name__ == "__main__":

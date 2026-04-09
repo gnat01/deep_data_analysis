@@ -37,6 +37,7 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["ai_concepts_by_role_family"].exists()
     assert outputs["company_building_themes_by_month"].exists()
     assert outputs["recurring_company_hiring_patterns"].exists()
+    assert outputs["company_semantic_spread"].exists()
     assert outputs["company_posting_counts_visual"].exists()
     assert outputs["company_summary_visual"].exists()
     assert outputs["remote_status_trends_visual"].exists()
@@ -55,6 +56,8 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
     assert outputs["company_building_themes_2026_visual"].exists()
     assert outputs["company_building_themes_timeseries_visual"].exists()
     assert outputs["recurring_company_hiring_patterns_visual"].exists()
+    assert outputs["company_semantic_spread_visual"].exists()
+    assert outputs["company_variation_histograms_index"].exists()
     assert outputs["visual_index"].exists()
     assert outputs["manifest"].exists()
 
@@ -92,6 +95,18 @@ def test_materialize_core_analytics_writes_outputs(tmp_path: Path, monkeypatch) 
         theme_rows = list(csv.DictReader(handle))
     assert theme_rows
     assert {"thread_month", "building_theme", "company_count", "hiring_post_count"} <= set(theme_rows[0].keys())
+
+    with outputs["company_semantic_spread"].open(encoding="utf-8", newline="") as handle:
+        semantic_rows = list(csv.DictReader(handle))
+    assert semantic_rows
+    assert {
+        "company_name",
+        "post_count",
+        "mean_pairwise_angle_deg",
+        "median_pairwise_angle_deg",
+        "p90_pairwise_angle_deg",
+        "exact_reuse_share",
+    } <= set(semantic_rows[0].keys())
 
 
 def test_recurring_company_hiring_patterns_contains_repeat_companies() -> None:

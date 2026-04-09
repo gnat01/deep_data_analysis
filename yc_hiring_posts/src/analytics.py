@@ -97,6 +97,7 @@ def materialize_core_analytics() -> dict[str, Path]:
     ai_concept_role_family_rows = ai_concepts_by_role_family(roles, month_by_thread_id)
     product_theme_rows = company_building_themes_by_month(posts, company_name_by_id, month_by_thread_id)
     recurring_rows = recurring_company_hiring_patterns(posts, company_name_by_id, month_by_thread_id)
+    company_semantic_rows = company_semantic_spread(posts, company_name_by_id, month_by_thread_id)
 
     outputs = {
         "company_posting_counts_by_month": write_csv(
@@ -139,9 +140,15 @@ def materialize_core_analytics() -> dict[str, Path]:
             analytics_dir / "recurring_company_hiring_patterns.csv",
             recurring_rows,
         ),
+        "company_semantic_spread": write_csv(
+            analytics_dir / "company_semantic_spread.csv",
+            company_semantic_rows,
+        ),
     }
     visual_outputs = write_analytics_visuals(
         visuals_dir=visuals_dir,
+        posts=posts,
+        company_name_by_id=company_name_by_id,
         company_posting_rows=company_posting_rows,
         company_summary_rows=company_summary_rows,
         remote_rows=remote_rows,
@@ -152,6 +159,7 @@ def materialize_core_analytics() -> dict[str, Path]:
         ai_concept_role_family_rows=ai_concept_role_family_rows,
         product_theme_rows=product_theme_rows,
         recurring_rows=recurring_rows,
+        company_semantic_rows=company_semantic_rows,
     )
     outputs.update(visual_outputs)
     outputs["manifest"] = write_manifest(analytics_dir / "analytics_manifest.json", outputs)
@@ -507,6 +515,133 @@ def recurring_company_hiring_patterns(
     return rows
 
 
+def company_semantic_spread(
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    month_by_thread_id: dict[str, str],
+    top_n: int = 100,
+) -> list[dict[str, object]]:
+    """Rank companies by how semantically varied their hiring posts are."""
+
+    grouped_rows: dict[str, list[dict[str, object]]] = defaultdict(list)
+    company_name_lookup: dict[str, str] = {}
+    company_id_lookup: dict[str, str | None] = {}
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        company_id = post.get("company_id")
+        observed_name = str(post.get("company_name_observed") or "").strip()
+        company_name = company_name_by_id.get(company_id) if company_id else None
+        if not company_name:
+            company_name = observed_name
+        if not company_name:
+            continue
+        company_key = str(company_id) if company_id else f"observed:{company_name.lower()}"
+        grouped_rows[company_key].append(
+            {
+                "post_id": str(post["post_id"]),
+                "thread_id": str(post["thread_id"]),
+                "thread_month": month_by_thread_id[str(post["thread_id"])],
+                "text": str(post.get("post_text_clean") or "").strip(),
+            }
+        )
+        company_name_lookup[company_key] = company_name
+        company_id_lookup[company_key] = str(company_id) if company_id else None
+
+    ranked_keys = sorted(
+        grouped_rows,
+        key=lambda key: (-len(grouped_rows[key]), company_name_lookup.get(key, key).lower()),
+    )[:top_n]
+
+    rows: list[dict[str, object]] = []
+    for company_key in ranked_keys:
+        company_posts = grouped_rows[company_key]
+        texts = [row["text"] for row in company_posts if row["text"]]
+        metrics = semantic_angle_metrics(texts)
+        months = sorted({row["thread_month"] for row in company_posts})
+        rows.append(
+            {
+                "company_key": company_key,
+                "company_id": company_id_lookup.get(company_key),
+                "company_name": company_name_lookup.get(company_key),
+                "post_count": len(company_posts),
+                "pair_count": metrics["pair_count"],
+                "exact_reuse_share": metrics["exact_reuse_share"],
+                "mean_pairwise_cosine": metrics["mean_pairwise_cosine"],
+                "mean_pairwise_angle_deg": metrics["mean_pairwise_angle_deg"],
+                "median_pairwise_angle_deg": metrics["median_pairwise_angle_deg"],
+                "p90_pairwise_angle_deg": metrics["p90_pairwise_angle_deg"],
+                "max_pairwise_angle_deg": metrics["max_pairwise_angle_deg"],
+                "active_month_count": len(months),
+                "first_month": months[0] if months else None,
+                "last_month": months[-1] if months else None,
+            }
+        )
+    return rows
+
+
+def semantic_angle_metrics(texts: list[str]) -> dict[str, float | int]:
+    """Summarize the pairwise semantic spread of a company's post texts."""
+
+    cleaned_texts = [text.strip() for text in texts if text and text.strip()]
+    post_count = len(cleaned_texts)
+    if post_count <= 1:
+        return {
+            "pair_count": 0,
+            "exact_reuse_share": 0.0,
+            "mean_pairwise_cosine": 1.0 if post_count == 1 else 0.0,
+            "mean_pairwise_angle_deg": 0.0,
+            "median_pairwise_angle_deg": 0.0,
+            "p90_pairwise_angle_deg": 0.0,
+            "max_pairwise_angle_deg": 0.0,
+        }
+
+    angles, cosines = pairwise_semantic_geometry(cleaned_texts)
+    unique_text_count = len(set(cleaned_texts))
+    exact_reuse_share = 1.0 - (unique_text_count / post_count)
+    return {
+        "pair_count": len(angles),
+        "exact_reuse_share": round(exact_reuse_share, 4),
+        "mean_pairwise_cosine": round(sum(cosines) / len(cosines), 4),
+        "mean_pairwise_angle_deg": round(mean(angles), 2),
+        "median_pairwise_angle_deg": round(percentile(angles, 50), 2),
+        "p90_pairwise_angle_deg": round(percentile(angles, 90), 2),
+        "max_pairwise_angle_deg": round(max(angles), 2),
+    }
+
+
+def pairwise_semantic_geometry(texts: list[str]) -> tuple[list[float], list[float]]:
+    """Return pairwise angle and cosine values for TF-IDF text embeddings."""
+
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_features=4000)
+    try:
+        matrix = vectorizer.fit_transform(texts)
+    except ValueError:
+        pair_count = (len(texts) * (len(texts) - 1)) // 2
+        return [0.0] * pair_count, [1.0] * pair_count
+    cosine_matrix = cosine_similarity(matrix)
+    upper_i, upper_j = np.triu_indices_from(cosine_matrix, k=1)
+    cosine_values = [float(np.clip(value, -1.0, 1.0)) for value in cosine_matrix[upper_i, upper_j]]
+    angle_values = [float(np.degrees(np.arccos(value))) for value in cosine_values]
+    return angle_values, cosine_values
+
+
+def mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def percentile(values: list[float], pct: int) -> float:
+    import numpy as np
+
+    if not values:
+        return 0.0
+    return float(np.percentile(values, pct))
+
+
 def load_jsonl(path: Path) -> list[dict[str, object]]:
     """Load rows from a JSONL file."""
 
@@ -539,6 +674,8 @@ def write_manifest(path: Path, outputs: dict[str, Path]) -> Path:
 def write_analytics_visuals(
     *,
     visuals_dir: Path,
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
     company_posting_rows: list[dict[str, object]],
     company_summary_rows: list[dict[str, object]],
     remote_rows: list[dict[str, object]],
@@ -549,6 +686,7 @@ def write_analytics_visuals(
     ai_concept_role_family_rows: list[dict[str, object]],
     product_theme_rows: list[dict[str, object]],
     recurring_rows: list[dict[str, object]],
+    company_semantic_rows: list[dict[str, object]],
 ) -> dict[str, Path]:
     """Write a polished visual for each core analytical output."""
 
@@ -598,7 +736,20 @@ def write_analytics_visuals(
         "recurring_company_hiring_patterns_visual": plot_recurring_company_patterns(
             plt, pd, visuals_dir / "recurring_company_hiring_patterns.png", recurring_rows
         ),
+        "company_semantic_spread_visual": plot_company_semantic_spread(
+            plt, pd, visuals_dir / "company_semantic_spread.png", company_semantic_rows
+        ),
     }
+    outputs.update(
+        plot_company_variation_histograms(
+            plt,
+            pd,
+            visuals_dir / "company_variation_histograms",
+            posts,
+            company_name_by_id,
+            company_semantic_rows,
+        )
+    )
     outputs.update(
         plot_company_building_themes_by_year(
             plt,
@@ -1326,6 +1477,109 @@ def plot_recurring_company_patterns(plt, pd, output_path: Path, rows: list[dict[
     fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return output_path
+
+
+def plot_company_semantic_spread(plt, pd, output_path: Path, rows: list[dict[str, object]]) -> Path:
+    """Plot the companies with the widest semantic posting spread."""
+
+    frame = pd.DataFrame(rows)
+    top = (
+        frame.sort_values(["mean_pairwise_angle_deg", "post_count", "company_name"], ascending=[False, False, True])
+        .head(20)
+        .copy()
+    )
+    fig, ax = plt.subplots(figsize=(13, 8.5), constrained_layout=True)
+    ax.barh(
+        top["company_name"],
+        top["mean_pairwise_angle_deg"],
+        color="#8c564b",
+        edgecolor="#1b1a17",
+    )
+    ax.invert_yaxis()
+    ax.set_title("Companies With The Widest Semantic Spread")
+    ax.set_xlabel("Mean pairwise angle (degrees)")
+    ax.set_ylabel("Company")
+    for index, (_, row) in enumerate(top.iterrows()):
+        ax.text(
+            float(row["mean_pairwise_angle_deg"]) + 0.6,
+            index,
+            f"{float(row['mean_pairwise_angle_deg']):.1f}°",
+            va="center",
+            fontsize=10,
+        )
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_company_variation_histograms(
+    plt,
+    pd,
+    output_dir: Path,
+    posts: list[dict[str, object]],
+    company_name_by_id: dict[str, str],
+    semantic_rows: list[dict[str, object]],
+    top_n: int = 24,
+) -> dict[str, Path]:
+    """Write static pairwise-angle histograms for the most relevant companies."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows_by_key = {
+        str(row["company_key"]): row
+        for row in semantic_rows
+        if row.get("company_key") and int(row.get("post_count") or 0) >= 2
+    }
+    top_rows = sorted(
+        rows_by_key.values(),
+        key=lambda row: (-int(row["post_count"]), row.get("company_name") or ""),
+    )[:top_n]
+
+    posts_by_company: dict[str, list[str]] = defaultdict(list)
+    for post in posts:
+        if not post.get("is_hiring_post"):
+            continue
+        company_id = post.get("company_id")
+        observed_name = str(post.get("company_name_observed") or "").strip()
+        company_name = company_name_by_id.get(company_id) if company_id else None
+        if not company_name:
+            company_name = observed_name
+        if not company_name:
+            continue
+        company_key = str(company_id) if company_id else f"observed:{company_name.lower()}"
+        posts_by_company[company_key].append(str(post.get("post_text_clean") or ""))
+
+    outputs: dict[str, Path] = {}
+    index_lines = ["# Company Variation Histograms", "", "Static pairwise-angle histograms for top companies.", ""]
+    for row in top_rows:
+        company_key = str(row["company_key"])
+        company_name = str(row["company_name"])
+        texts = posts_by_company.get(company_key, [])
+        if len([text for text in texts if text.strip()]) < 2:
+            continue
+        angles, _ = pairwise_semantic_geometry(texts)
+        if not angles:
+            continue
+        output_path = output_dir / f"{slugify(company_name)}.png"
+        fig, ax = plt.subplots(figsize=(11.2, 5.8), constrained_layout=True)
+        ax.hist(angles, bins=min(18, max(6, len(angles))), color="#7f5539", edgecolor="#1f1d1a", alpha=0.88)
+        ax.set_title(f"{company_name}: Pairwise Semantic Angle Distribution")
+        ax.set_xlabel("Angle between posts (degrees)")
+        ax.set_ylabel("Pair count")
+        ax.grid(alpha=0.22, linestyle="--")
+        fig.savefig(output_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        outputs[f"company_variation_hist_{slugify(company_name)}"] = output_path
+        index_lines.append(f"- `{company_name}`: `{output_path.name}`")
+
+    index_path = output_dir / "README.md"
+    index_path.write_text("\n".join(index_lines) + "\n", encoding="utf-8")
+    outputs["company_variation_histograms_index"] = index_path
+    return outputs
+
+
+def slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "company"
 
 
 def write_visual_index(path: Path, outputs: dict[str, Path]) -> Path:

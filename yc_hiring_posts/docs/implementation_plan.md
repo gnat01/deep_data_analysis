@@ -41,10 +41,14 @@ Deliverables:
 - remote vs non-remote trends
 - role-family trend tables
 - company persistence reports
+- company-building theme summaries
+- company-level semantic spread / sameness analysis
+- interactive Streamlit exploration over processed analytics
 
 Success criteria:
 
 - standard trend questions can be answered from tables alone
+- recurring companies can be ranked by how repetitive or varied their hiring narratives are
 - results are reproducible from raw inputs
 
 ## Phase 4: Similarity And Change Analysis
