@@ -350,6 +350,7 @@ streamlit run app.py
 
 The explorer reads from `data/processed/v1_core_tables/` and lets you filter by:
 
+- start month / end month
 - companies
 - role families
 - remote status

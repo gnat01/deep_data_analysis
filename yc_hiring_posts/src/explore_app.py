@@ -17,11 +17,12 @@ def load_table(name: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     posts = load_table("posts.jsonl")
     roles = load_table("roles.jsonl")
     companies = load_table("companies.jsonl")
-    return posts, roles, companies
+    threads = load_table("threads.jsonl")
+    return posts, roles, companies, threads
 
 
 def with_company_display(posts: pd.DataFrame, roles: pd.DataFrame, companies: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -30,6 +31,18 @@ def with_company_display(posts: pd.DataFrame, roles: pd.DataFrame, companies: pd
     roles = roles.copy()
     posts["company_display"] = posts["company_id"].map(company_name_by_id).fillna(posts["company_name_observed"]).fillna("[unresolved]")
     roles["company_display"] = roles["company_id"].map(company_name_by_id).fillna("[unresolved]")
+    return posts, roles
+
+
+def with_thread_month(posts: pd.DataFrame, roles: pd.DataFrame, threads: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    month_by_thread_id = dict(zip(threads["thread_id"].astype(str), threads["thread_month"].astype(str), strict=False))
+    posts = posts.copy()
+    roles = roles.copy()
+    posts["thread_id"] = posts["thread_id"].astype(str)
+    roles["post_id"] = roles["post_id"].astype(str)
+    posts["thread_month"] = posts["thread_id"].map(month_by_thread_id)
+    post_month_by_post_id = dict(zip(posts["post_id"].astype(str), posts["thread_month"].astype(str), strict=False))
+    roles["thread_month"] = roles["post_id"].map(post_month_by_post_id)
     return posts, roles
 
 
@@ -78,6 +91,8 @@ def build_filtered_frames(
     posts: pd.DataFrame,
     roles: pd.DataFrame,
     companies: pd.DataFrame,
+    start_month: str,
+    end_month: str,
     selected_companies: list[str],
     selected_role_families: list[str],
     selected_remote_statuses: list[str],
@@ -85,12 +100,16 @@ def build_filtered_frames(
     posts, roles = with_company_display(posts, roles, companies)
 
     filtered_posts = posts[posts["is_hiring_post"] == True].copy()
+    filtered_posts = filtered_posts[
+        (filtered_posts["thread_month"] >= start_month) & (filtered_posts["thread_month"] <= end_month)
+    ]
     if selected_companies:
         filtered_posts = filtered_posts[filtered_posts["company_display"].isin(selected_companies)]
     if selected_remote_statuses:
         filtered_posts = filtered_posts[filtered_posts["remote_status"].fillna("unspecified").isin(selected_remote_statuses)]
 
     filtered_roles = roles.copy()
+    filtered_roles = filtered_roles[filtered_roles["post_id"].astype(str).isin(set(filtered_posts["post_id"].astype(str)))]
     if selected_companies:
         filtered_roles = filtered_roles[filtered_roles["company_display"].isin(selected_companies)]
     if selected_role_families:
@@ -186,7 +205,8 @@ def build_insights(filtered_posts: pd.DataFrame, filtered_roles: pd.DataFrame) -
 
 def render() -> None:
     app_style()
-    posts, roles, companies = load_data()
+    posts, roles, companies, threads = load_data()
+    posts, roles = with_thread_month(posts, roles, threads)
     posts, roles = with_company_display(posts, roles, companies)
 
     st.markdown(
@@ -202,6 +222,17 @@ def render() -> None:
     company_options = sorted(posts.loc[posts["is_hiring_post"] == True, "company_display"].dropna().astype(str).unique().tolist())
     role_family_options = sorted(roles["role_family"].dropna().astype(str).unique().tolist())
     remote_options = ["remote", "hybrid", "onsite", "unspecified"]
+    month_options = sorted(posts.loc[posts["is_hiring_post"] == True, "thread_month"].dropna().astype(str).unique().tolist())
+
+    range_left, range_right = st.columns(2)
+    with range_left:
+        start_month = st.selectbox("Start month", month_options, index=0)
+    with range_right:
+        end_month = st.selectbox("End month", month_options, index=len(month_options) - 1)
+
+    if start_month > end_month:
+        st.error("Start month must be before or equal to end month.")
+        return
 
     left, mid, right = st.columns([1.3, 1.1, 1.0])
     with left:
@@ -215,6 +246,8 @@ def render() -> None:
         posts,
         roles,
         companies,
+        start_month,
+        end_month,
         selected_companies,
         selected_role_families,
         selected_remote_statuses,
