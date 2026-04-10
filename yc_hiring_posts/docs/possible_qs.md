@@ -1,6 +1,6 @@
 # Possible Questions
 
-This file is a working bank of natural and analytical questions the YC / HN hiring-posts knowledge base should eventually answer well.
+This file is a working bank of natural and analytical questions the YC / HN hiring-posts project should eventually answer well.
 
 The point is coverage:
 
@@ -116,6 +116,6 @@ The point is coverage:
 
 ## Why This Matters
 
-This question bank should drive the next KB-helper layer.
+This question bank should guide future analysis, retrieval, and product decisions.
 
-If Task 3 can answer most of these cleanly, then the knowledge base is genuinely useful before we even add a natural-language layer on top.
+If a future query layer is rebuilt, it should be evaluated against this bank rather than treated as complete by default.

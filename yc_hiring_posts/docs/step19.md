@@ -1,205 +1,99 @@
 # Step 19
 
-Step 19 should turn the PostgreSQL knowledge base into a real retrieval layer and also deepen the company-change views with **windowed temporal structure**.
+Step 19 is intentionally retained for the **windowed post-vs-role change analysis**.
 
-## Core Retrieval Goal
+This is not part of the removed PostgreSQL / KB / Q&A layer.
+It sits on top of the existing processed analytics stack and remains valuable.
 
-Add structured and text retrieval over the PostgreSQL-backed corpus so we can answer targeted questions quickly and reproducibly.
+## Goal
 
-## Change-Analysis Extension That Must Be Added
+Take the company-level post-vs-role spread work from Step 17 and make it more temporally informative.
 
-The current `post_mean_angle_deg` vs `role_mean_angle_deg` comparison is useful, but it is still an approximation because it collapses time inside one selected window.
+Instead of one aggregate spread number across the full history, divide the selected month range into non-overlapping 6-month windows and track:
 
-Step 19 must add a **windowed version** of this analysis.
+- post spread by window
+- role spread by window
+- how these move together over time
 
-### Required Design
+## Core Outputs
 
-Compute company change metrics over **non-overlapping 6-month windows**.
+### 1. Windowed post-vs-role table
 
-That means:
+Primary artifact:
 
-- one `post_mean_angle_deg` per company per 6-month window
-- one `role_mean_angle_deg` per company per 6-month window
+- `data/processed/analytics/company_post_vs_role_spread_6m.csv`
 
-### Why This Matters
+Important fields include:
 
-Without windowing:
+- `window_index`
+- `window_start_month`
+- `window_end_month`
+- `window_label`
+- `company_name`
+- `post_mean_angle_deg`
+- `role_mean_angle_deg`
+- `spread_ratio`
+- variance-related fields already produced by the analytics layer
 
-- temporary pivots get averaged away
-- return-to-template behavior gets hidden
-- companies that change for a while and then revert look flatter than they really are
+### 2. Static visual
 
-With 6-month windows:
+Primary PNG:
 
-- we can see all-company spread structure by time window
-- we can track a single company across windows
-- we can capture companies that start repetitive, pivot, then stabilize again
+- `data/processed/analytics/visuals/company_post_vs_role_spread_6m.png`
 
-### Required Outputs
+This gives a compact window-by-window view across all companies.
 
-1. all-company scatter plots by 6-month window
-   x = `role_mean_angle_deg`
-   y = `post_mean_angle_deg`
+### 3. Streamlit views
 
-2. binned robustness view by 6-month window
-   x = role-angle bins
-   y = post-angle distribution within each bin
+This layer remains part of the main exploration app and should stay visible in the change-analysis surface.
 
-3. same-company trajectory view across windows
-   for a selected company, show how its windowed points move over time
+Key views:
 
-4. windowed metrics table
-   one row per `company x 6-month window`
+- all-company windowed scatter
+- binned robustness boxplot
+- company-specific windowed trajectory
+- company-specific windowed scatter
 
-### Streamlit Requirement
+## Interpretation
 
-These must be added to the `Change Analysis` tab when Step 19 is built.
-
-The app should support:
-
-- choosing a company
-- viewing its windowed trajectory across non-overlapping 6-month periods
-- comparing that trajectory to the broader all-company scatter for each window
-
-## Retrieval Deliverables
-
-Step 19 should also add:
-
-- structured filtering on company / month / role family / remote status
-- full-text post retrieval
-- role-level retrieval
-- evidence-linked result sets coming out of PostgreSQL
-
-### Task 1: PostgreSQL Retrieval Layer
-
-The first retrieval task should expose CLI-level search over the live PostgreSQL KB for:
-
-- `posts`
-- `roles`
-
-Minimum requirements:
-
-- optional full-text query
-- optional structured filters:
-  - company
-  - role family
-  - remote status
-  - month range
-- evidence-linked rows that include:
-  - thread month
-  - company
-  - source URL
-  - matched post or role text
-- a compact summary mode for quick inspection from the terminal
-
-### Task 2: Answer-Oriented KB Helpers
-
-The second task should turn raw retrieval into reusable question helpers.
-
-Minimum helpers:
-
-- company activity over time
-  - which months did a company post?
-  - how many posts / roles / role families per month?
-- company role presence in a range
-  - did a company hire for a given role query or role family between two dates?
-  - return boolean + matched months + evidence rows
-
-These helpers should stay structured and evidence-linked. Natural-language querying still belongs later.
-
-### Task 3: Broader Helper Coverage
-
-The third task should expand helper coverage across the largest remaining question families.
-
-Current helper blocks now in place:
-
-- month summaries and month rankings
-- role-family timelines
-- companies-for-role lookups
-- evidence lookup helpers
-- remote-mix helpers
-- remote-change helpers
-- compensation-history helpers
-- AI concept timeline helpers
-- first requirement-change summarisation helper
-- recurring-company / post-shape helpers:
-  - companies posting every month in a year
-  - remote-first companies in a year
-  - companies hiring across two role families in a range
-  - global-remote share by year
-  - post-length summary by year
-  - company post-length consistency
-
-These should stay:
-
-- CLI accessible
-- PostgreSQL backed
-- evidence linked
-- reusable by later orchestration and NL layers
-
-### Task 3 Commands Now Available
-
-- `month-summary-postgres`
-- `role-family-timeline-postgres`
-- `companies-for-role-postgres`
-- `evidence-lookup-postgres`
-- `remote-mix-postgres`
-- `company-remote-change-postgres`
-- `compensation-history-postgres`
-- `ai-concept-timeline-postgres`
-- `role-requirement-change-summary-postgres`
-- `companies-every-month-postgres`
-- `remote-first-companies-postgres`
-- `companies-role-pair-postgres`
-- `global-remote-share-postgres`
-- `post-shape-summary-postgres`
-- `company-post-length-consistency-postgres`
-- `company-change-summary-postgres`
-- `company-theme-history-postgres`
-
-### Remaining Task 3 Work
-
-Task 3 is now well underway, but not complete.
-
-Most likely remaining families:
-
-- stronger comparative helpers
-- geography-aware helpers only where the data truly supports them
-- tighter summarisation quality for change questions
-- helper composition patterns that can support Step 20 routing
-
-### Task 4: Structured Composition / Routing Layer
-
-Task 4 should add a lightweight orchestration layer over the helper library.
-
-This is **not** the natural-language layer yet.
-
-It should:
-
-- take a structured question target
-- route it to the best current helper
-- use simple compositions where needed
-- return a grounded answer object with:
-  - question metadata
-  - routed helper name
-  - evidence-linked helper output
-
-Current Task 4 command now available:
-
-- `answer-catalog-question-postgres`
-
-This command routes one question from the catalog by `question_id` into the best current helper or composition.
+This layer is useful because it preserves temporality.
 
 Examples:
 
-```bash
-python src/cli.py answer-catalog-question-postgres \
-  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
-  --question-id 3
-```
+- low post spread and low role spread across windows: highly stable company
+- rising post spread with flat role spread: wording or narrative changed more than hiring mix
+- rising role spread with flat post spread: company template stayed tight while role mix changed
+- both rising together in a window: genuine widening or pivot in hiring focus
+
+## Why It Stays
+
+This analysis is part of the pre-KB analytics stack.
+
+It depends on:
+
+- processed posts
+- processed roles
+- analytics embeddings / spread calculations
+- the existing Streamlit explorer
+
+It does **not** depend on:
+
+- PostgreSQL
+- the KB router
+- the removed natural-language Q&A layer
+
+## How To Rebuild
+
+Recompute through the standard analytics command:
 
 ```bash
-python src/cli.py answer-catalog-question-postgres \
-  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
-  --question-id 43
+PYTHONPATH=src python src/cli.py materialize-core-analytics
+```
+
+Then inspect:
+
+```bash
+sed -n '1,10p' data/processed/analytics/company_post_vs_role_spread_6m.csv
+ls data/processed/analytics/visuals/company_post_vs_role_spread_6m.png
+streamlit run app.py
 ```

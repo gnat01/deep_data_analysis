@@ -4,275 +4,40 @@ This file is the current handoff note for the YC / HN hiring-posts project.
 
 ## Where We Are
 
-- **Step 16** is complete for V1.
-  - analytics
-  - visuals
-  - Streamlit app
-  - AI concept tracking
-  - company/theme analysis
-  - compensation hardening
+- Steps 4 through 17 are the active project surface.
+- The raw -> interim -> processed pipeline is intact.
+- Step 16 analytics, visuals, and the main Streamlit explorer are intact.
+- Step 17 company-change analysis is intact.
+- Step 19 windowed post-vs-role analysis is also intentionally retained.
+- The Step 18-20 PostgreSQL / KB / Q&A layer has been intentionally removed.
 
-- **Step 17** is complete.
-  - company change analysis
-  - post semantic spread
-  - role semantic spread
-  - drift metrics
-  - changed-company ranking
-  - PNG / GIF artifacts
-  - Streamlit change-analysis views
+## What Is Solid
 
-- **Step 18** is complete.
-  - PostgreSQL installed locally
-  - PostgreSQL running
-  - schema initialized
-  - core YC tables loaded
-  - config and docs saved
+- source indexing and thread fetching
+- parsing and validation
+- post normalization
+- role extraction
+- company normalization
+- processed core-table materialization
+- analytics materialization
+- time-series and change-analysis visuals
+- Streamlit exploration app built on processed files
 
-- **Step 19** is partially complete.
-  - windowed 6-month company change analysis is built
-  - Task 1 is done: raw PostgreSQL retrieval
-  - Task 2 is done: first answer-oriented KB helpers
-  - question-bank classification layer is built
-  - Task 3 is underway with broad helper coverage now live
-  - Task 4 is started with a routed catalog-question command
+## Key Files
 
-- **Step 20** is started.
-  - conservative natural-language question parsing
-  - grounded routing into the KB/router layer
-  - dedicated Q&A CLI entrypoint
-  - dedicated Q&A Streamlit app
-
-## Important Project Files
-
-### Planning / Docs
-
-- [`BUILD_PLAN.md`](../BUILD_PLAN.md)
 - [`HOW_TO_RUN.md`](./HOW_TO_RUN.md)
-- [`using_postgres.md`](./using_postgres.md)
-- [`possible_qs.md`](./possible_qs.md)
 - [`step17.md`](./step17.md)
 - [`step19.md`](./step19.md)
-- [`question_catalog.md`](./question_catalog.md)
-- [`question_catalog.json`](./question_catalog.json)
-- [`step20.md`](./step20.md)
-
-### Core Recent Code
-
-- [`src/postgres_kb.py`](./src/postgres_kb.py)
-- [`src/question_catalog.py`](./src/question_catalog.py)
-- [`src/cli.py`](./src/cli.py)
-- [`src/explore_app.py`](./src/explore_app.py)
-- [`src/analytics.py`](./src/analytics.py)
-- [`src/qa_layer.py`](./src/qa_layer.py)
-- [`src/kb_router.py`](./src/kb_router.py)
-- [`src/qa_app.py`](./src/qa_app.py)
-
-## PostgreSQL Status
-
-Local DB is installed and loaded.
-
-Current setup:
-
-- database: `yc_hiring_posts`
-- schema: `yc_hiring`
-- DSN: `postgresql://gn@/yc_hiring_posts?host=/tmp`
-
-Loaded core tables:
-
-- `threads`
-- `raw_posts`
-- `posts`
-- `roles`
-- `companies`
-
-Reference docs:
-
-- [`using_postgres.md`](./using_postgres.md)
-- [`postgres_local_setup.md`](./postgres_local_setup.md)
-- [`config/postgres.local.env`](../config/postgres.local.env)
-
-## Step 19 Progress
-
-### Already Done
-
-#### Windowed change analysis
-
-- non-overlapping 6-month windows
-- all-company windowed scatter
-- binned robustness view
-- company deep-dive windowed scatter in Streamlit
-
-#### Task 1: raw retrieval layer
-
-CLI commands:
-
-- `search-postgres-posts`
-- `search-postgres-roles`
-
-These support:
-
-- optional full-text query
-- company filter
-- role-family filter
-- remote-status filter
-- month range
-- evidence-linked result rows
-
-#### Task 2: first KB helpers
-
-CLI commands:
-
-- `company-activity-postgres`
-- `company-role-presence-postgres`
-
-These support:
-
-- company timeline questions
-- yes/no role-presence questions with matched months and evidence
-
-#### Task 3: broader helper coverage now live
-
-CLI commands:
-
-- `month-summary-postgres`
-- `role-family-timeline-postgres`
-- `companies-for-role-postgres`
-- `evidence-lookup-postgres`
-- `remote-mix-postgres`
-- `company-remote-change-postgres`
-- `compensation-history-postgres`
-- `ai-concept-timeline-postgres`
-- `role-requirement-change-summary-postgres`
-- `companies-every-month-postgres`
-- `remote-first-companies-postgres`
-- `companies-role-pair-postgres`
-- `global-remote-share-postgres`
-- `post-shape-summary-postgres`
-- `company-post-length-consistency-postgres`
-- `company-change-summary-postgres`
-- `company-theme-history-postgres`
-
-These now cover:
-
-- month summaries
-- role timelines
-- company lookup by role
-- evidence retrieval
-- remote-mix questions
-- company remote-status changes
-- compensation history
-- AI concept timelines
-- requirement-change summarisation
-- recurring-company patterns
-- global-remote heuristics
-- post-shape / consistency questions
-- company-change rankings
-- company-theme history / theme shifts
-
-#### Question classification layer
-
-Implemented in:
-
-- [`src/question_catalog.py`](./src/question_catalog.py)
-
-Generated outputs:
-
-- [`docs/question_catalog.md`](./docs/question_catalog.md)
-- [`docs/question_catalog.json`](./docs/question_catalog.json)
-
-Purpose:
-
-- classify the 50-question bank
-- attach answer type
-- attach evaluation mode
-- attach likely KB helper
-- drive Task 3 intelligently
-
-#### Task 4: structured routing layer
-
-CLI command:
-
-- `answer-catalog-question-postgres`
-
-Current purpose:
-
-- route one catalog question by `question_id`
-- choose the best current helper or simple composition
-- return a grounded answer object with question metadata and routed helper name
-
-## What Still Needs To Be Done
-
-### Step 19 Task 3 Remaining Work
-
-Task 3 is materially underway, but not complete.
-
-Most important remaining areas:
-
-- stronger comparative helpers
-- tighter summarisation quality
-- geography helpers only where data quality really supports them
-- wider question-bank coverage against the still-uncovered families
-
-### Step 19 Task 4
-
-Add a composition / routing layer over the helpers, still structured and grounded.
-
-This is still before the real natural-language layer.
-
-Current status:
-
-- started
-- first routed catalog command is live
-- next likely improvement is broader question-id routing coverage and cleaner composed outputs
-
-### Step 20
-
-Initial Step 20 surface is now in place.
-
-Current pieces:
-
-- `ask-postgres-kb` CLI command
-- dedicated `qa_app.py` Streamlit app
-- conservative parser in `src/qa_layer.py`
-- grounded routing through `src/kb_router.py`
-
-Current behavior:
-
-- answer when confidence and required params are sufficient
-- return clarification-needed instead of guessing when they are not
-
-## Where We Want To Get To
-
-Short-term:
-
-- finish **Step 19** with broad helper coverage across the 50-question bank
-- We also definitely need a dedicated streamlit app (NOT the current one) for the Q&A - both purely with KB helpers, and down the road using NLP + context + KB. This app will be finished in Step 20.
-Then:
-
-- continue **Step 20**
-- improve NL parsing coverage
-- improve answer synthesis quality
-- keep answers grounded with evidence
-- prepare the dedicated Q&A app for broader use
-
-## Tomorrow’s Restart Point
-
-When restarting, the next concrete move is:
-
-- continue **Step 19 Task 3**
-- use [`docs/question_catalog.md`](./docs/question_catalog.md) as the spec
-
-Priority order:
-
-1. stronger comparative helpers
-2. tighter summary helpers
-3. question-family gaps from the catalog
-4. helper composition patterns for Step 20
-
-
-## Notes
-
-- `spread_gap` was removed from the UI and analytics surfaces because it was not considered meaningful enough.
-- `drift_score` is retained and documented as:
-  - `mean(angle_from_first_deg) + mean(angle_from_previous_deg)`
-- the app was cleaned up to reduce clutter in the change-analysis flows.
+- [`possible_qs.md`](./possible_qs.md)
+- [`IMPORTANT_FIELDS.md`](./IMPORTANT_FIELDS.md)
+- [`schema.md`](./schema.md)
+- [`src/cli.py`](../src/cli.py)
+- [`src/analytics.py`](../src/analytics.py)
+- [`src/explore_app.py`](../src/explore_app.py)
+- [`src/materialize.py`](../src/materialize.py)
+
+## Current Direction
+
+The project is now back to the end-of-Step-17 boundary.
+
+Any future knowledge-base or database work should be reconsidered from scratch rather than built on the removed Step 18-20 layer.
