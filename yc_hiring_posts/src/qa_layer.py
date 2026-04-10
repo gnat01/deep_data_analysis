@@ -264,21 +264,93 @@ def parse_nl_question(question: str) -> ParsedQuestion:
 def summarize_answer(result: dict[str, Any]) -> str:
     helper = result["routed_helper"]
     answer = result["answer"]
+    rows = answer.get("rows", [])
     if helper == "companies-every-month-postgres":
         count = int(answer.get("row_count", 0))
-        names = [row["company_name"] for row in answer.get("rows", [])[:5]]
+        names = [row["company_name"] for row in rows[:5]]
         return f"{count} companies posted in every month of the year. Examples: {', '.join(names)}."
+    if helper == "remote-first-companies-postgres":
+        count = int(answer.get("row_count", 0))
+        names = [row["company_name"] for row in rows[:5]]
+        return f"{count} companies were remote-first in the selected year. Examples: {', '.join(names)}."
+    if helper == "company-remote-change-postgres":
+        top = rows[:5]
+        return "Companies with changing remote patterns include " + ", ".join(
+            f"{row['company_name']} ({', '.join(row['remote_statuses'])})" for row in top
+        ) + "."
+    if helper == "month-summary-postgres":
+        if rows:
+            top = sorted(rows, key=lambda row: int(row.get("company_count", 0)), reverse=True)[:3]
+            return "Months with the highest distinct company counts include " + "; ".join(
+                f"{row['thread_month']} ({row['company_count']} companies)" for row in top
+            ) + "."
+    if helper == "role-family-timeline-postgres":
+        if rows:
+            top = sorted(rows, key=lambda row: int(row.get("role_count", 0)), reverse=True)[:3]
+            role_family = top[0].get("role_family")
+            return f"Top months for {role_family} include " + "; ".join(
+                f"{row['thread_month']} ({row['role_count']} roles)" for row in top
+            ) + "."
+    if helper == "companies-for-role-postgres":
+        companies = answer.get("companies", [])
+        if companies:
+            top = companies[:5]
+            return "Companies matched include " + ", ".join(
+                f"{row['company_name']} ({row['matched_role_count']} roles)" for row in top
+            ) + "."
     if helper == "role-requirement-change-summary-postgres":
+        query = str(answer.get("filters", {}).get("query") or "the selected role")
+        early_months = answer.get("early_months", [])
+        late_months = answer.get("late_months", [])
+        early_label = f"{early_months[0]} to {early_months[-1]}" if early_months else "the earlier window"
+        late_label = f"{late_months[0]} to {late_months[-1]}" if late_months else "the later window"
         points = answer.get("summary_points", [])
-        return " ".join(points[:3]) if points else "No clear requirement-change summary was found."
+        emerging_terms: list[str] = []
+        fading_terms: list[str] = []
+        concept_gains: list[str] = []
+        for point in points:
+            match = re.match(r"Later windows emphasize terms like (.+)\.$", str(point))
+            if match:
+                emerging_terms = [part.strip() for part in match.group(1).split(",") if part.strip()]
+                continue
+            match = re.match(r"Earlier windows leaned more on (.+)\.$", str(point))
+            if match:
+                fading_terms = [part.strip() for part in match.group(1).split(",") if part.strip()]
+                continue
+            match = re.match(r"AI-related emphasis increased for concepts such as (.+)\.$", str(point))
+            if match:
+                concept_gains = [part.strip() for part in match.group(1).split(",") if part.strip()]
+        clauses: list[str] = [f"For {query}, posts shifted between {early_label} and {late_label}."]
+        if emerging_terms:
+            clauses.append(f"Later posts emphasized {', '.join(emerging_terms[:3])}.")
+        if fading_terms:
+            clauses.append(f"Earlier posts leaned more on {', '.join(fading_terms[:3])}.")
+        if concept_gains:
+            clauses.append(f"AI emphasis rose around {', '.join(concept_gains[:3])}.")
+        if len(clauses) == 1:
+            clauses.append("Requirement language stayed broadly stable across the selected window.")
+        summary = " ".join(clauses)
+        words = summary.split()
+        return " ".join(words[:50]) + ("..." if len(words) > 50 else "")
+    if helper == "ai-concept-timeline-postgres":
+        if rows:
+            concept_name = rows[0].get("concept_name")
+            top = sorted(rows, key=lambda row: int(row.get("mentioning_post_count", 0)), reverse=True)[:4]
+            return f"{concept_name} appeared most strongly in " + "; ".join(
+                f"{row['thread_month']} ({row['mentioning_post_count']} posts)" for row in top
+            ) + "."
     if helper == "global-remote-share-postgres":
-        rows = answer.get("rows", [])
         return " ".join(
             f"{row['year']}: {row['global_remote_share_pct']}% of remote roles looked global-remote."
             for row in rows[:4]
         )
+    if helper == "compensation-history-postgres":
+        if rows:
+            top = rows[:4]
+            return "Compensation evidence includes " + "; ".join(
+                f"{row['company_name']} {row['thread_month']} ({row['compensation_text']})" for row in top
+            ) + "."
     if helper == "company-theme-history-postgres":
-        rows = answer.get("rows", [])
         if rows and "building_theme" in rows[0]:
             top = rows[:3]
             return "Top theme rows returned for the selected window: " + "; ".join(
@@ -291,12 +363,29 @@ def summarize_answer(result: dict[str, Any]) -> str:
                 for row in top
             )
     if helper == "company-change-summary-postgres":
-        rows = answer.get("rows", [])
         if rows:
             top = rows[:3]
             return "Most changed companies in the selected window: " + "; ".join(
                 f"{row['company_name']} (score {row['changed_score']})" for row in top
             )
+    if helper == "evidence-lookup-postgres":
+        if rows:
+            top = rows[:3]
+            return "Matched evidence includes " + "; ".join(
+                f"{row.get('thread_month', '?')} {row.get('company_name', '[unknown]')}" for row in top
+            ) + "."
+    if helper == "post-shape-summary-postgres":
+        if rows:
+            return "Year-by-year post lengths: " + "; ".join(
+                f"{row['year']} median {int(float(row['median_post_length_chars']))} chars"
+                for row in rows[:4]
+            ) + "."
+    if helper == "company-post-length-consistency-postgres":
+        if rows:
+            top = rows[:5]
+            return "Most length-consistent companies include " + ", ".join(
+                f"{row['company_name']} (stddev {row['stddev_post_length_chars']})" for row in top
+            ) + "."
     if helper == "company-activity-postgres":
         months = answer.get("months", [])
         company_name = answer.get("company_name")

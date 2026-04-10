@@ -60,10 +60,50 @@ def test_ai_engineer_summary_uses_clean_default_query(monkeypatch) -> None:
             "question_text": "In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?",
             "question_family": "requirement_change_summary",
             "routed_helper": "role-requirement-change-summary-postgres",
-            "answer": {"entity": "role_requirement_change_summary", "summary_points": ["Later windows emphasize agents."]},
+            "answer": {
+                "entity": "role_requirement_change_summary",
+                "filters": {"query": "AI Engineer"},
+                "early_months": ["2024-01", "2024-02"],
+                "late_months": ["2026-03", "2026-04"],
+                "summary_points": [
+                    "Later windows emphasize terms like agents, rag, prompt.",
+                    "Earlier windows leaned more on machine, learning, python.",
+                    "AI-related emphasis increased for concepts such as agents, gpt_llm, agent_tooling.",
+                ],
+            },
         }
 
     monkeypatch.setattr("qa_layer.answer_catalog_question_postgres", fake_router)
     result = answer_nl_question_postgres("In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?")
     assert result["status"] == "answered"
     assert captured["query"] == "AI Engineer"
+    assert "For AI Engineer, posts shifted between 2024-01 to 2024-02 and 2026-03 to 2026-04." in result["summary"]
+    assert "Later posts emphasized agents, rag, prompt." in result["summary"]
+    assert "Earlier posts leaned more on machine, learning, python." in result["summary"]
+
+
+def test_remote_first_question_returns_company_names(monkeypatch) -> None:
+    monkeypatch.setattr("qa_layer.load_company_names", lambda limit=12000: ["DuckDuckGo", "OpenAI"])
+
+    def fake_router(**kwargs):
+        return {
+            "question_id": 9,
+            "question_text": "Which companies were remote-first in 2025?",
+            "question_family": "general_analytical_lookup",
+            "routed_helper": "remote-first-companies-postgres",
+            "answer": {
+                "entity": "remote_first_companies",
+                "row_count": 3,
+                "rows": [
+                    {"company_name": "DuckDuckGo"},
+                    {"company_name": "Coder"},
+                    {"company_name": "PlantingSpace"},
+                ],
+            },
+        }
+
+    monkeypatch.setattr("qa_layer.answer_catalog_question_postgres", fake_router)
+    result = answer_nl_question_postgres("Which companies were remote-first in 2025?")
+    assert result["status"] == "answered"
+    assert "DuckDuckGo" in result["summary"]
+    assert "Coder" in result["summary"]
