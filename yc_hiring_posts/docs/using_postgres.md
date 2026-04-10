@@ -441,3 +441,23 @@ python src/cli.py answer-catalog-question-postgres \
   --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
   --question-id 43
 ```
+
+Natural-language entrypoint:
+
+```bash
+python src/cli.py ask-postgres-kb \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question "Which companies posted hiring ads in every month of 2025?"
+```
+
+```bash
+python src/cli.py ask-postgres-kb \
+  --database-url "postgresql://gn@/yc_hiring_posts?host=/tmp" \
+  --question "In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?"
+```
+
+Dedicated Q&A app:
+
+```bash
+streamlit run qa_app.py
+```

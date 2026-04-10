@@ -36,6 +36,12 @@ This file is the current handoff note for the YC / HN hiring-posts project.
   - Task 3 is underway with broad helper coverage now live
   - Task 4 is started with a routed catalog-question command
 
+- **Step 20** is started.
+  - conservative natural-language question parsing
+  - grounded routing into the KB/router layer
+  - dedicated Q&A CLI entrypoint
+  - dedicated Q&A Streamlit app
+
 ## Important Project Files
 
 ### Planning / Docs
@@ -48,6 +54,7 @@ This file is the current handoff note for the YC / HN hiring-posts project.
 - [`step19.md`](./step19.md)
 - [`question_catalog.md`](./question_catalog.md)
 - [`question_catalog.json`](./question_catalog.json)
+- [`step20.md`](./step20.md)
 
 ### Core Recent Code
 
@@ -56,6 +63,9 @@ This file is the current handoff note for the YC / HN hiring-posts project.
 - [`src/cli.py`](./src/cli.py)
 - [`src/explore_app.py`](./src/explore_app.py)
 - [`src/analytics.py`](./src/analytics.py)
+- [`src/qa_layer.py`](./src/qa_layer.py)
+- [`src/kb_router.py`](./src/kb_router.py)
+- [`src/qa_app.py`](./src/qa_app.py)
 
 ## PostgreSQL Status
 
@@ -215,6 +225,22 @@ Current status:
 - first routed catalog command is live
 - next likely improvement is broader question-id routing coverage and cleaner composed outputs
 
+### Step 20
+
+Initial Step 20 surface is now in place.
+
+Current pieces:
+
+- `ask-postgres-kb` CLI command
+- dedicated `qa_app.py` Streamlit app
+- conservative parser in `src/qa_layer.py`
+- grounded routing through `src/kb_router.py`
+
+Current behavior:
+
+- answer when confidence and required params are sufficient
+- return clarification-needed instead of guessing when they are not
+
 ## Where We Want To Get To
 
 Short-term:
@@ -223,11 +249,11 @@ Short-term:
 - We also definitely need a dedicated streamlit app (NOT the current one) for the Q&A - both purely with KB helpers, and down the road using NLP + context + KB. This app will be finished in Step 20.
 Then:
 
-- move to **Step 20**
-- build a natural-language interface over the helper-backed KB
-- route questions into the right helper where possible
-- use retrieval + synthesis only where necessary
-- always keep answers grounded with evidence
+- continue **Step 20**
+- improve NL parsing coverage
+- improve answer synthesis quality
+- keep answers grounded with evidence
+- prepare the dedicated Q&A app for broader use
 
 ## Tomorrow’s Restart Point
 

@@ -1,76 +1,159 @@
 {
-  "entity": "company_theme_history",
-  "schema": "yc_hiring",
-  "filters": {
+  "status": "answered",
+  "question": "In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?",
+  "parsed": {
+    "question_id": 43,
+    "confidence": 1.0,
+    "candidates": [
+      {
+        "question_id": 43,
+        "question_text": "In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?",
+        "question_family": "requirement_change_summary",
+        "similarity": 1.0
+      },
+      {
+        "question_id": 8,
+        "question_text": "How did the share of remote roles change from 2023 to 2026?",
+        "question_family": "company_role_presence",
+        "similarity": 0.1162
+      },
+      {
+        "question_id": 2,
+        "question_text": "Was there any month between December 2024 and January 2026 when DuckDuckGo was hiring for data science?",
+        "question_family": "company_role_presence",
+        "similarity": 0.0786
+      },
+      {
+        "question_id": 42,
+        "question_text": "Did any companies change their compensation band for the same job role over time? If so, which ones?",
+        "question_family": "company_role_presence",
+        "similarity": 0.0679
+      },
+      {
+        "question_id": 24,
+        "question_text": "Which companies were hiring for data engineers remotely in 2024?",
+        "question_family": "role_company_lookup",
+        "similarity": 0.0659
+      }
+    ],
     "company_name": null,
-    "month_from": "2023-01",
+    "query": "AI Engineer",
+    "role_family": "ml_ai",
+    "role_family_a": null,
+    "role_family_b": null,
+    "concept_name": null,
+    "month_from": "2024-01",
     "month_to": "2026-04",
-    "mode": "shift_summary",
-    "limit": 5
+    "year": null,
+    "mode": null,
+    "requires_clarification": false,
+    "clarification_reason": null
   },
-  "row_count": 5,
-  "rows": [
-    {
-      "company_key": "company_a91a3089c26d",
-      "company_name": "Layer Health",
-      "active_month_count": 17,
-      "emerging_themes": [
-        "ai_ml",
-        "health_bio",
-        "developer_tools"
+  "routed": {
+    "question_id": 43,
+    "question_text": "In 50 words or less, how did the requirements for an AI engineer change from 2024 - 2026?",
+    "question_family": "requirement_change_summary",
+    "routed_helper": "role-requirement-change-summary-postgres",
+    "answer": {
+      "entity": "role_requirement_change_summary",
+      "schema": "yc_hiring",
+      "filters": {
+        "query": "AI Engineer",
+        "month_from": "2024-01",
+        "month_to": "2026-04",
+        "limit_evidence": 5
+      },
+      "match_found": true,
+      "early_months": [
+        "2024-01",
+        "2024-02",
+        "2024-03",
+        "2024-04",
+        "2024-05",
+        "2024-06",
+        "2024-07",
+        "2024-08",
+        "2024-09",
+        "2024-10",
+        "2024-11",
+        "2024-12",
+        "2025-01",
+        "2025-02"
       ],
-      "fading_themes": [],
-      "theme_shift_score": 52
-    },
-    {
-      "company_key": "company_6f5cbc5cfa4d",
-      "company_name": "Radar Labs",
-      "active_month_count": 25,
-      "emerging_themes": [
-        "developer_tools",
-        "data_infra",
-        "climate_energy"
+      "late_months": [
+        "2025-03",
+        "2025-04",
+        "2025-05",
+        "2025-06",
+        "2025-07",
+        "2025-08",
+        "2025-09",
+        "2025-10",
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
       ],
-      "fading_themes": [],
-      "theme_shift_score": 50
-    },
-    {
-      "company_key": "company_46587fb818d2",
-      "company_name": "Absinthe Labs",
-      "active_month_count": 11,
-      "emerging_themes": [
-        "data_infra",
-        "developer_tools",
-        "security_identity"
+      "summary_points": [
+        "Later windows emphasize terms like apply.",
+        "Earlier windows leaned more on machine.",
+        "AI-related emphasis increased for concepts such as agents, gpt_llm, agent_tooling, rag."
       ],
-      "fading_themes": [],
-      "theme_shift_score": 46
-    },
-    {
-      "company_key": "company_e7b467e28b1a",
-      "company_name": "Tandem Health",
-      "active_month_count": 22,
-      "emerging_themes": [
-        "ai_ml",
-        "health_bio",
-        "developer_tools"
-      ],
-      "fading_themes": [],
-      "theme_shift_score": 45
-    },
-    {
-      "company_key": "company_b894b99ea789",
-      "company_name": "Freeform (http://freeform.co)",
-      "active_month_count": 17,
-      "emerging_themes": [
-        "ai_ml",
-        "climate_energy",
-        "robotics_hardware"
-      ],
-      "fading_themes": [
-        "data_infra"
-      ],
-      "theme_shift_score": 36
+      "evidence_rows": [
+        {
+          "thread_month": "2024-01",
+          "role_title_observed": "Bayesian software engineers and researchers",
+          "role_family": "ml_ai",
+          "requirements_text": "",
+          "skills_text": "",
+          "responsibilities_text": "",
+          "post_text_clean": "PlantingSpace | Full-time | Remote (EU time zone) with quarterly gatherings | https://planting.space\n\nWe are building a system that can accurately represent knowledge and handle uncertainty, to enable the discovery of insights and solve problems based on explainable reasoning. We envision applications to automate analysis and speed up research in domains such as Finance, Strategy Consulting, Engineering, Material Sciences, and more.\n\nWe are continuously looking for strong software engineers who are up for a challenge and a steep learning curve. You\u2019ll be exposed to cutting edge research in Bayesian statistics, dynamical systems, information theory, category theory, and more.\n\nSpecific skillsets we will be looking for throughout 2024:\n\n- Backend production grade software engineers with experience in developing algorithms\n\n- Bayesian software engineers and researchers\n\n- NLP Engineers with state of the art LLM and up to date transformer model experience\n\n- Infrastructure specialists to build a robust scalable system with machine learning deployments\n\nIf you think this could be a great fit, apply to us through our Join Us page: https://planting.space/joinus/ (if one of the skillsets above is not explicitly listed, apply to our \u2018General Opening\u2019)..\n\nYou can find more about our tech, organisation, and ways of work on our website: https://planting.space/",
+          "source_url": "https://news.ycombinator.com/item?id=38843203"
+        },
+        {
+          "thread_month": "2024-01",
+          "role_title_observed": "Machine Learning Engineer [2]",
+          "role_family": "ml_ai",
+          "requirements_text": "",
+          "skills_text": "",
+          "responsibilities_text": "",
+          "post_text_clean": "** Trunk Tools | ML Engineers | Full-Time | US REMOTE or ONSITE NYC **\n\nTrunk Tools creates software to make construction more efficient and cost effective, we have significant revenue and are growing extremely quickly! We're a team with prior experience at SpaceX, PlanGrid, Carta, LinkedIn, Uber, etc.\n\nWe're looking for:\n\n* Lead AI/ML Engineer [1]\n* Machine Learning Engineer [2]\n\nExamples of relevant experience would include semantic and lexical search, RAG, knowledge graphs, fine-tuning models, prompt engineering, MLOps, parsing unstructured data, enterprise search. A great candidate would have experience with many of these, not just one.\n\nFeel free to email your resume and a note over to rob+jan24@trunk.tools\n\n[1] https://trunktools.com/careers/?ashby_jid=0a5a1379-d653-4805...\n\n[2] https://trunktools.com/careers/?ashby_jid=d4c7f0cb-533f-4520...",
+          "source_url": "https://news.ycombinator.com/item?id=38844643"
+        },
+        {
+          "thread_month": "2024-01",
+          "role_title_observed": "Hiring: AI Engineer",
+          "role_family": "ml_ai",
+          "requirements_text": "",
+          "skills_text": "",
+          "responsibilities_text": "",
+          "post_text_clean": "Sudowrite | REMOTE | Full-Time | Competitive Salary + Equity | Hiring: AI Engineer\n\n- We believe the future of writing is AI & human collaboration. Sudowrite is the best AI for creative writers.\n\n- We are profitable with a rapidly growing paying user base.\n\n- We've been featured in The New York Times, New Yorker, Verge, etc.\n\n- We believe new tools will enable a renaissance in art & creativity and we want to help the next generation of storytellers tell better stories.\n\n- We\u2019re 100% remote and support work-life balance. We meet up in person a few times of year, last time in Portland. We encourage diverse candidates from all over the world to apply.\n\n- Details: https://sudowrite.notion.site/We-re-hiring-engineers-to-make...",
+          "source_url": "https://news.ycombinator.com/item?id=38844796"
+        },
+        {
+          "thread_month": "2024-01",
+          "role_title_observed": "Senior Applied AI/ML engineer",
+          "role_family": "ml_ai",
+          "requirements_text": "",
+          "skills_text": "",
+          "responsibilities_text": "",
+          "post_text_clean": "Avy (https://www.avy.ai) | Multiple Roles | Salt Lake City, UT | REMOTE (USA) or ONSITE\n\nWe are an early-stage, well-funded, stealth startup making humans and computers work together more efficiently. Experienced team from Apple AIML, Bose, Amazon, and other great companies.\n\nWe're hiring for:\n\n- Generalist AI/ML engineer (writing agent code, RAG, prompt engineering, etc)\n\n- Senior Applied AI/ML engineer (including LLM fine-tuning, search/retrieval systems, and various vision and NLP tasks)\n\n- Marketing (in the \"growth hacker\" spirit) -- if your dream is to launch the fastest-growing B2B SaaS product ever, we want to talk with you.\n\n- MacOS (Swift, Objective-C, C/C++, etc) at the Senior and Staff levels. iOS experience is OK.\n\nWe're distributed but expect travel for regularly scheduled on-site, in-person work in SLC, with future presence in New York City.\n\nEmail jobs@avy.ai or visit https://avy.breezy.hr (not all positions posted there yet)",
+          "source_url": "https://news.ycombinator.com/item?id=38844879"
+        },
+        {
+          "thread_month": "2024-01",
+          "role_title_observed": "Machine Learning Engineer",
+          "role_family": "ml_ai",
+          "requirements_text": "",
+          "skills_text": "",
+          "responsibilities_text": "",
+          "post_text_clean": "Digital Harbor Foundation | Machine Learning Engineer | REMOTE (US Only)\n\nDigital Harbor Foundation (https://digitalharbor.org) is a not-for-profit grant-funded organization dedicated to increasing access to empowering technologies in under-served communities. As part of that work, our Learning Engineering team provides technical support to the Learning Engineering Virtual Institute (https://learning-engineering-virtual-institute.org). LEVI's goal is to build software and systems that will double students' rate of progress in middle school math. This means that LEVI teams both build products and do research to determine product efficacy - and we help with both.\n\nWe're seeking a Machine Learning Engineer to join our team. This person would serve as on-call support, helping university and ed-tech teams implement, scale, and test their digital learning products. We're looking for someone who is a quick learner, is very collaborative, is familiar (or can quickly become familiar) with GCP/AWS/Azure, and who has some experience with machine learning, MLOps, and data science generally. We are also looking for someone who understands the needs of both engineers and researchers, and can translate between the two groups.\n\nThis is a great role for someone interested in working with the top organizations and funders in the ed-tech space. It's also a great position if you'd like to use and evaluate LLMs in educational settings. The position is fully remote, but we have an in-person convening once a year. We also support travel to 1-2 conferences a year, with bonus points if you are presenting.\n\nApply here: https://digitalharborfoundation.applytojob.com/apply/iDXY64A...",
+          "source_url": "https://news.ycombinator.com/item?id=38845227"
+        }
+      ]
     }
-  ]
+  },
+  "summary": "Later windows emphasize terms like apply. Earlier windows leaned more on machine. AI-related emphasis increased for concepts such as agents, gpt_llm, agent_tooling, rag."
 }

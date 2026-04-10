@@ -14,6 +14,7 @@ from kb_router import answer_catalog_question_postgres
 from materialize import materialize_v1_core_tables
 from normalize import normalize_and_write_thread_posts
 from parse import parse_and_write_thread_posts
+from qa_layer import answer_nl_question_postgres
 from postgres_kb import (
     ai_concept_timeline_postgres,
     company_activity_timeline_postgres,
@@ -406,6 +407,16 @@ def build_parser() -> argparse.ArgumentParser:
     routed_question_parser.add_argument("--mode", default=None)
     routed_question_parser.add_argument("--limit", type=int, default=10)
     routed_question_parser.add_argument("--limit-evidence", type=int, default=5)
+
+    ask_parser = subparsers.add_parser(
+        "ask-postgres-kb",
+        help="Ask a natural-language question against the PostgreSQL KB with conservative routing.",
+    )
+    ask_parser.add_argument("--database-url", default=None)
+    ask_parser.add_argument("--schema", default=DEFAULT_DB_SCHEMA)
+    ask_parser.add_argument("--question", required=True)
+    ask_parser.add_argument("--limit", type=int, default=10)
+    ask_parser.add_argument("--limit-evidence", type=int, default=5)
     return parser
 
 
@@ -827,6 +838,17 @@ def main() -> int:
             month_to=args.month_to,
             year=args.year,
             mode=args.mode,
+            limit=args.limit,
+            limit_evidence=args.limit_evidence,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.command == "ask-postgres-kb":
+        result = answer_nl_question_postgres(
+            args.question,
+            database_url=args.database_url,
+            schema=args.schema,
             limit=args.limit,
             limit_evidence=args.limit_evidence,
         )
